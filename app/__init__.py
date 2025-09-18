@@ -36,13 +36,28 @@ def create_app() -> Flask:
     """Create and configure the Flask application instance."""
 
     _configure_logging()
-    app = Flask(__name__)
-    app.config.setdefault("SQLALCHEMY_DATABASE_URI", os.environ.get("DATABASE_URL", "sqlite:///ai_router.db"))
-    app.config.setdefault("SQLALCHEMY_TRACK_MODIFICATIONS", False)
-    app.config.setdefault("SECRET_KEY", os.environ.get("SECRET_KEY", "change-me"))
-    app.config.setdefault("OPENAI_API_KEY", os.environ.get("OPENAI_API_KEY"))
-    app.config.setdefault("TELEGRAM_BOT_TOKEN", os.environ.get("TELEGRAM_BOT_TOKEN"))
-    app.config.setdefault("START_TELEGRAM_BOT", os.environ.get("START_TELEGRAM_BOT", "true").lower() == "true")
+    app = Flask(__name__, instance_relative_config=True)
+
+    database_uri = os.environ.get("DATABASE_URL")
+    if not database_uri:
+        os.makedirs(app.instance_path, exist_ok=True)
+        database_path = os.path.join(app.instance_path, "ai_router.db")
+        database_uri = f"sqlite:///{database_path}"
+    app.config["SQLALCHEMY_DATABASE_URI"] = database_uri
+    app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+
+    secret_key = os.environ.get("SECRET_KEY") or app.config.get("SECRET_KEY") or "change-me"
+    app.config["SECRET_KEY"] = secret_key
+
+    app.config["OPENAI_API_KEY"] = os.environ.get("OPENAI_API_KEY") or app.config.get("OPENAI_API_KEY")
+    app.config["TELEGRAM_BOT_TOKEN"] = os.environ.get("TELEGRAM_BOT_TOKEN") or app.config.get("TELEGRAM_BOT_TOKEN")
+
+    start_bot_env = os.environ.get("START_TELEGRAM_BOT")
+    if start_bot_env is not None:
+        start_bot = start_bot_env.lower() == "true"
+    else:
+        start_bot = bool(app.config.get("START_TELEGRAM_BOT", True))
+    app.config["START_TELEGRAM_BOT"] = start_bot
 
     db.init_app(app)
 
