@@ -1,0 +1,57 @@
+{% extends 'admin/layout.html' %}
+{% block title %}Пользователи — AI Router{% endblock %}
+{% block content %}
+<h1 class="mb-4">Пользователи</h1>
+<div class="table-responsive">
+    <table class="table table-striped align-middle">
+        <thead>
+        <tr>
+            <th>ID</th>
+            <th>Telegram</th>
+            <th>Имя</th>
+            <th>Статус</th>
+            <th>Токены</th>
+            <th>Последняя активность</th>
+            <th></th>
+        </tr>
+        </thead>
+        <tbody>
+        {% for user in users %}
+            <tr>
+                <td>{{ user.id }}</td>
+                <td>@{{ user.username or '—' }}</td>
+                <td><a href="{{ url_for('admin.user_detail', user_id=user.id) }}">{{ user.full_name or '—' }}</a></td>
+                <td>
+                    {% if user.is_active %}
+                        <span class="badge bg-success">Активен</span>
+                    {% else %}
+                        <span class="badge bg-secondary">Заблокирован</span>
+                    {% endif %}
+                </td>
+                <td>{{ user.tokens_used }}</td>
+                <td>{{ user.last_interaction.strftime('%d.%m.%Y %H:%M') if user.last_interaction else '—' }}</td>
+                <td>
+                    <button class="btn btn-sm btn-outline-primary" onclick="toggleUser({{ user.id }})">
+                        {% if user.is_active %}Отключить{% else %}Включить{% endif %}
+                    </button>
+                </td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+<script>
+function toggleUser(userId) {
+    fetch(`{{ url_for('admin.api_toggle_user', user_id=0) }}`.replace('0', userId), {
+        method: 'POST',
+        headers: { 'X-Requested-With': 'XMLHttpRequest' }
+    }).then(resp => resp.json()).then(data => {
+        if (data.status === 'ok') {
+            window.location.reload();
+        } else {
+            alert('Не удалось изменить статус пользователя');
+        }
+    }).catch(() => alert('Ошибка сети'));
+}
+</script>
+{% endblock %}

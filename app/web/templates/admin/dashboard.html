@@ -1,0 +1,94 @@
+{% extends 'admin/layout.html' %}
+{% block title %}Дашборд — AI Router{% endblock %}
+{% block content %}
+<h1 class="mb-4">Дашборд</h1>
+<div class="row g-3">
+    <div class="col-md-3">
+        <div class="card text-bg-warning h-100">
+            <div class="card-body">
+                <h6 class="card-subtitle">Израсходовано токенов</h6>
+                <p class="display-6">{{ stats['total_tokens'] }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-bg-primary h-100">
+            <div class="card-body">
+                <h6 class="card-subtitle">Всего пользователей</h6>
+                <p class="display-6">{{ stats['total_users'] }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-bg-success h-100">
+            <div class="card-body">
+                <h6 class="card-subtitle">Активных пользователей</h6>
+                <p class="display-6">{{ stats['active_users'] }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-bg-info h-100">
+            <div class="card-body">
+                <h6 class="card-subtitle">Диалогов</h6>
+                <p class="display-6">{{ stats['total_conversations'] }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-bg-dark h-100">
+            <div class="card-body">
+                <h6 class="card-subtitle">Запросов</h6>
+                <p class="display-6">{{ stats['total_requests'] }}</p>
+            </div>
+        </div>
+    </div>
+</div>
+<div class="row g-3 mt-4">
+    <div class="col-md-6">
+        <div class="card h-100">
+            <div class="card-header">Последние запросы</div>
+            <div class="card-body">
+                {% if logs %}
+                    <div class="list-group list-group-flush">
+                        {% for log in logs %}
+                            <div class="list-group-item">
+                                <small class="text-muted">{{ log.created_at.strftime('%d.%m.%Y %H:%M') }}</small>
+                                <div><strong>{{ log.user.full_name or log.user.username or log.user.telegram_id }}</strong></div>
+                                <div class="text-truncate">{{ log.prompt }}</div>
+                                <div class="text-success">{{ log.response|default('—', true) }}</div>
+                            </div>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <p class="text-muted">Запросов пока не было.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card h-100">
+            <div class="card-header">Настроенные пресеты</div>
+            <div class="card-body">
+                {% if presets %}
+                    <ul class="list-group list-group-flush">
+                        {% for preset in presets %}
+                            <li class="list-group-item d-flex justify-content-between align-items-start">
+                                <div>
+                                    <div class="fw-semibold">{{ preset.display_name }}</div>
+                                    <small class="text-muted">Температура: {{ preset.temperature }}, Макс. токенов: {{ preset.max_tokens }}</small>
+                                </div>
+                                {% if preset.is_default %}
+                                    <span class="badge bg-primary rounded-pill">По умолчанию</span>
+                                {% endif %}
+                            </li>
+                        {% endfor %}
+                    </ul>
+                {% else %}
+                    <p class="text-muted">Пресеты ещё не созданы.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,27 @@
+{% extends 'admin/layout.html' %}
+{% block title %}Настройки — AI Router{% endblock %}
+{% block content %}
+<h1 class="mb-4">Настройки интеграций</h1>
+<form method="post" class="row g-3">
+    <div class="col-md-6">
+        <label class="form-label" for="openai_api_key">OpenAI API ключ</label>
+        <input type="password" class="form-control" id="openai_api_key" name="openai_api_key" value="{{ openai_api_key or '' }}" placeholder="sk-...">
+        <div class="form-text">Сохраняется в базе данных, убедитесь в безопасности окружения.</div>
+    </div>
+    <div class="col-md-3">
+        <label class="form-label" for="openai_model">Модель</label>
+        <input type="text" class="form-control" id="openai_model" name="openai_model" value="{{ openai_model or '' }}" placeholder="gpt-4o-mini">
+    </div>
+    <div class="col-md-3">
+        <label class="form-label" for="telegram_token">Токен Telegram бота</label>
+        <input type="password" class="form-control" id="telegram_token" name="telegram_token" value="{{ telegram_token or '' }}">
+    </div>
+    <div class="col-md-3">
+        <label class="form-label" for="admin_secret">Секрет для входа</label>
+        <input type="password" class="form-control" id="admin_secret" name="admin_secret" value="{{ admin_secret or '' }}">
+    </div>
+    <div class="col-12">
+        <button type="submit" class="btn btn-primary">Сохранить</button>
+    </div>
+</form>
+{% endblock %}

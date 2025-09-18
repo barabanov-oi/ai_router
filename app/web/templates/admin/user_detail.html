@@ -1,0 +1,94 @@
+{% extends 'admin/layout.html' %}
+{% block title %}Пользователь {{ user.full_name or user.username or user.telegram_id }} — AI Router{% endblock %}
+{% block content %}
+<h1 class="mb-3">{{ user.full_name or user.username or user.telegram_id }}</h1>
+<div class="row g-3">
+    <div class="col-md-4">
+        <div class="card h-100">
+            <div class="card-body">
+                <h5 class="card-title">Информация</h5>
+                <p><strong>Telegram ID:</strong> {{ user.telegram_id }}</p>
+                <p><strong>Имя пользователя:</strong> {{ user.username or '—' }}</p>
+                <p><strong>Статус:</strong>
+                    {% if user.is_active %}
+                        <span class="badge bg-success">Активен</span>
+                    {% else %}
+                        <span class="badge bg-secondary">Заблокирован</span>
+                    {% endif %}
+                </p>
+                <p><strong>Предпочтительный режим:</strong> {{ user.preferred_preset.display_name if user.preferred_preset else '—' }}</p>
+                <p><strong>Последняя активность:</strong> {{ user.last_interaction.strftime('%d.%m.%Y %H:%M') if user.last_interaction else '—' }}</p>
+                <button class="btn btn-outline-danger" onclick="resetConversation({{ user.id }})">Сбросить активный диалог</button>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card h-100">
+            <div class="card-body">
+                <h5 class="card-title">Статистика</h5>
+                <p><strong>Диалогов:</strong> {{ stats['conversation_count'] }}</p>
+                <p><strong>Запросов:</strong> {{ stats['request_count'] }}</p>
+                <p><strong>Токенов:</strong> {{ stats['total_tokens'] }}</p>
+                <p><strong>Подписка:</strong> {{ user.subscription_plan }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card h-100">
+            <div class="card-body">
+                <h5 class="card-title">Диалоги</h5>
+                {% if conversations %}
+                    <ul class="list-group list-group-flush">
+                        {% for conv in conversations %}
+                            <li class="list-group-item">
+                                <div class="fw-semibold">{{ conv.title }}</div>
+                                <small class="text-muted">{{ conv.created_at.strftime('%d.%m.%Y %H:%M') }}</small>
+                                {% if conv.is_active %}
+                                    <span class="badge bg-primary ms-2">Активный</span>
+                                {% endif %}
+                            </li>
+                        {% endfor %}
+                    </ul>
+                {% else %}
+                    <p class="text-muted">Диалоги отсутствуют.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+<div class="card mt-4">
+    <div class="card-header">Последние сообщения</div>
+    <div class="card-body">
+        {% if logs %}
+            <div class="list-group list-group-flush">
+                {% for log in logs %}
+                    <div class="list-group-item">
+                        <small class="text-muted">{{ log.created_at.strftime('%d.%m.%Y %H:%M') }}</small>
+                        <div class="fw-semibold">Запрос:</div>
+                        <p>{{ log.prompt }}</p>
+                        <div class="fw-semibold">Ответ:</div>
+                        <p class="text-success">{{ log.response or '—' }}</p>
+                    </div>
+                {% endfor %}
+            </div>
+        {% else %}
+            <p class="text-muted">Логи отсутствуют.</p>
+        {% endif %}
+    </div>
+</div>
+<script>
+function resetConversation(userId) {
+    fetch(`{{ url_for('admin.api_reset_conversation', user_id=0) }}`.replace('0', userId), {
+        method: 'POST',
+        headers: { 'X-Requested-With': 'XMLHttpRequest' }
+    }).then(resp => resp.json()).then(data => {
+        if (data.status === 'ok') {
+            alert('Диалог завершён.');
+            window.location.reload();
+        } else {
+            alert('Не удалось завершить диалог.');
+        }
+    }).catch(() => alert('Ошибка сети'));
+}
+</script>
+{% endblock %}

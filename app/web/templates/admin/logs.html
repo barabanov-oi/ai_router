@@ -1,0 +1,32 @@
+{% extends 'admin/layout.html' %}
+{% block title %}Журнал запросов — AI Router{% endblock %}
+{% block content %}
+<h1 class="mb-4">Журнал запросов</h1>
+<div class="list-group">
+    {% for log in logs %}
+        <div class="list-group-item">
+            <div class="d-flex justify-content-between">
+                <div>
+                    <strong>{{ log.user.full_name or log.user.username or log.user.telegram_id }}</strong>
+                    <span class="badge bg-secondary">{{ log.status }}</span>
+                </div>
+                <small class="text-muted">{{ log.created_at.strftime('%d.%m.%Y %H:%M') }}</small>
+            </div>
+            <div class="mt-2">
+                <div class="fw-semibold">Запрос</div>
+                <p class="mb-1">{{ log.prompt }}</p>
+                <div class="fw-semibold">Ответ</div>
+                <p class="text-success mb-1">{{ log.response or '—' }}</p>
+                {% if log.error_message %}
+                    <div class="alert alert-warning py-1 px-2">Ошибка: {{ log.error_message }}</div>
+                {% endif %}
+                {% if log.total_tokens %}
+                    <small class="text-muted">Токенов: {{ log.total_tokens }}</small>
+                {% endif %}
+            </div>
+        </div>
+    {% else %}
+        <p class="text-muted">Логи отсутствуют.</p>
+    {% endfor %}
+</div>
+{% endblock %}
