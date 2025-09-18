@@ -1,0 +1,35 @@
+{% extends 'admin/base.html' %}
+{% block title %}Пользователи{% endblock %}
+{% block content %}
+<h2>Пользователи</h2>
+<table>
+  <thead>
+    <tr>
+      <th>ID</th>
+      <th>Telegram</th>
+      <th>Имя</th>
+      <th>Режим</th>
+      <th>Статус</th>
+      <th>Последняя активность</th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for user in users %}
+      <tr>
+        <td>{{ user.id }}</td>
+        <td>{{ user.telegram_id }}</td>
+        <td>{{ user.username or user.full_name }}</td>
+        <td>{{ available_modes.get(user.current_mode, user.current_mode) }}</td>
+        <td>{{ 'Активен' if user.is_active else 'Заблокирован' }}</td>
+        <td>{{ user.last_seen.strftime('%Y-%m-%d %H:%M') }}</td>
+        <td><a class="btn" href="{{ url_for('admin.user_detail', user_id=user.id) }}">Подробнее</a></td>
+      </tr>
+    {% else %}
+      <tr>
+        <td colspan="7">Пользователей пока нет.</td>
+      </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

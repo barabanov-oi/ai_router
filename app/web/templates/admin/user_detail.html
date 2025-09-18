@@ -1,0 +1,57 @@
+{% extends 'admin/base.html' %}
+{% block title %}Пользователь {{ user.id }}{% endblock %}
+{% block content %}
+<section>
+  <h2>Пользователь {{ user.username or user.full_name or user.telegram_id }}</h2>
+  <dl class="details">
+    <dt>Telegram ID</dt>
+    <dd>{{ user.telegram_id }}</dd>
+    <dt>Имя</dt>
+    <dd>{{ user.full_name }}</dd>
+    <dt>Имя пользователя</dt>
+    <dd>{{ user.username }}</dd>
+    <dt>Роль</dt>
+    <dd>{{ user.role }}</dd>
+    <dt>Текущий режим</dt>
+    <dd>{{ available_modes.get(user.current_mode, user.current_mode) }}</dd>
+    <dt>Создан</dt>
+    <dd>{{ user.created_at.strftime('%Y-%m-%d %H:%M') }}</dd>
+    <dt>Последняя активность</dt>
+    <dd>{{ user.last_seen.strftime('%Y-%m-%d %H:%M') }}</dd>
+  </dl>
+  <form method="post" class="form">
+    <label>
+      <input type="checkbox" name="is_active" {% if user.is_active %}checked{% endif %}>
+      Пользователь активен
+    </label>
+    <button type="submit">Сохранить</button>
+  </form>
+</section>
+<section>
+  <h3>Последние сообщения</h3>
+  <table>
+    <thead>
+      <tr>
+        <th>Время</th>
+        <th>Запрос</th>
+        <th>Ответ</th>
+        <th>Модель</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for message in messages %}
+        <tr>
+          <td>{{ message.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+          <td>{{ message.user_message|truncate(120) }}</td>
+          <td>{{ message.assistant_message|truncate(120) }}</td>
+          <td>{{ message.model }}</td>
+        </tr>
+      {% else %}
+        <tr>
+          <td colspan="4">Нет данных.</td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}

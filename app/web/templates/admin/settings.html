@@ -1,0 +1,31 @@
+{% extends 'admin/base.html' %}
+{% block title %}Настройки{% endblock %}
+{% block content %}
+<h2>Настройки интеграций</h2>
+<form method="post" class="form">
+  <label>OpenAI API ключ
+    <input type="text" name="openai_api_key" value="{{ settings.get('openai_api_key', '') }}">
+  </label>
+  <label>Модель
+    <input type="text" name="openai_model" value="{{ settings.get('openai_model', '') }}">
+  </label>
+  <label>Температура
+    <input type="number" step="0.1" name="openai_temperature" value="{{ settings.get('openai_temperature', '') }}">
+  </label>
+  <label>Максимум токенов
+    <input type="number" name="openai_max_tokens" value="{{ settings.get('openai_max_tokens', '') }}">
+  </label>
+  <label>Telegram Bot Token
+    <input type="text" name="telegram_bot_token" value="{{ settings.get('telegram_bot_token', '') }}">
+  </label>
+  <button type="submit">Сохранить</button>
+</form>
+<section>
+  <h3>Доступные режимы бота</h3>
+  <ul>
+    {% for key, label in available_modes.items() %}
+      <li><strong>{{ label }}</strong> — код режима: {{ key }}</li>
+    {% endfor %}
+  </ul>
+</section>
+{% endblock %}

@@ -1,0 +1,31 @@
+{% extends 'admin/base.html' %}
+{% block title %}Логи{% endblock %}
+{% block content %}
+<h2>Журнал обращений</h2>
+<table>
+  <thead>
+    <tr>
+      <th>Время</th>
+      <th>Пользователь</th>
+      <th>Сообщение</th>
+      <th>Ответ</th>
+      <th>Токены</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for log in logs %}
+      <tr>
+        <td>{{ log.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+        <td>{{ log.user.username or log.user.full_name or log.user.telegram_id }}</td>
+        <td>{{ log.user_message|truncate(150) }}</td>
+        <td>{{ log.assistant_message|truncate(150) }}</td>
+        <td>{{ log.total_tokens }}</td>
+      </tr>
+    {% else %}
+      <tr>
+        <td colspan="5">Пока нет записей.</td>
+      </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

@@ -1,0 +1,118 @@
+body {
+  font-family: 'Segoe UI', Arial, sans-serif;
+  margin: 0;
+  background: #f4f6f8;
+  color: #1a1a1a;
+}
+
+.navbar {
+  background: #212a3e;
+  color: #fff;
+  padding: 1rem 2rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.navbar a {
+  color: #fff;
+  margin-left: 1rem;
+  text-decoration: none;
+}
+
+main {
+  padding: 2rem;
+}
+
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1rem;
+}
+
+.card {
+  background: #fff;
+  padding: 1rem;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 1rem;
+  background: #fff;
+}
+
+table th,
+table td {
+  padding: 0.75rem;
+  border: 1px solid #e0e0e0;
+  text-align: left;
+}
+
+.flash-messages {
+  list-style: none;
+  padding: 0;
+}
+
+.flash-success {
+  color: #0a8754;
+}
+
+.flash-error {
+  color: #a82828;
+}
+
+.form {
+  margin-top: 1rem;
+  background: #fff;
+  padding: 1rem;
+  border-radius: 8px;
+}
+
+.form label {
+  display: block;
+  margin-bottom: 0.75rem;
+}
+
+.form input {
+  width: 100%;
+  padding: 0.5rem;
+  margin-top: 0.25rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+}
+
+.form button,
+.btn {
+  display: inline-block;
+  padding: 0.6rem 1.2rem;
+  background: #304d63;
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.details {
+  background: #fff;
+  padding: 1rem;
+  border-radius: 8px;
+  margin: 1rem 0;
+}
+
+dt {
+  font-weight: 600;
+}
+
+dd {
+  margin: 0 0 0.5rem 0;
+}
+
+footer {
+  text-align: center;
+  padding: 1rem;
+  color: #777;
+}

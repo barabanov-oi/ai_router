@@ -1,0 +1,61 @@
+{% extends 'admin/base.html' %}
+{% block title %}Дашборд{% endblock %}
+{% block content %}
+<section class="cards">
+  <div class="card">
+    <h2>Пользователи всего</h2>
+    <p>{{ stats.total_users }}</p>
+  </div>
+  <div class="card">
+    <h2>Активные пользователи</h2>
+    <p>{{ stats.active_users }}</p>
+  </div>
+  <div class="card">
+    <h2>Запросов всего</h2>
+    <p>{{ stats.messages_total }}</p>
+  </div>
+  <div class="card">
+    <h2>Израсходовано токенов</h2>
+    <p>{{ stats.tokens_spent }}</p>
+  </div>
+  <div class="card">
+    <h2>Активно за 24 часа</h2>
+    <p>{{ stats.recent_activity }}</p>
+  </div>
+</section>
+<section>
+  <h2>Текущие параметры OpenAI</h2>
+  <ul class="details">
+    <li>Модель: {{ openai_config['model'] }}</li>
+    <li>Температура: {{ openai_config['temperature'] }}</li>
+    <li>Максимум токенов: {{ openai_config['max_tokens'] }}</li>
+  </ul>
+</section>
+<section>
+  <h2>Последние запросы</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Время</th>
+        <th>Пользователь</th>
+        <th>Запрос</th>
+        <th>Ответ</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for entry in recent %}
+        <tr>
+          <td>{{ entry.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+          <td>{{ entry.user.username or entry.user.full_name or entry.user.telegram_id }}</td>
+          <td>{{ entry.user_message|truncate(120) }}</td>
+          <td>{{ entry.assistant_message|truncate(120) }}</td>
+        </tr>
+      {% else %}
+        <tr>
+          <td colspan="4">Нет данных для отображения.</td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}
