@@ -1,0 +1,58 @@
+{% extends 'admin/base.html' %}
+{% block title %}Модели — AI Router{% endblock %}
+{% block content %}
+<h2>Модели</h2>
+<form method="post">
+  <h3>Новая конфигурация</h3>
+  <label>Название
+    <input type="text" name="name" required>
+  </label>
+  <label>Идентификатор модели
+    <input type="text" name="model" required>
+  </label>
+  <label>Temperature
+    <input type="number" step="0.1" name="temperature" value="1.0">
+  </label>
+  <label>Max tokens
+    <input type="number" name="max_tokens" value="512">
+  </label>
+  <label>Top P
+    <input type="number" step="0.1" name="top_p" value="1.0">
+  </label>
+  <label>Frequency penalty
+    <input type="number" step="0.1" name="frequency_penalty" value="0.0">
+  </label>
+  <label>Presence penalty
+    <input type="number" step="0.1" name="presence_penalty" value="0.0">
+  </label>
+  <label>
+    <input type="checkbox" name="is_default"> Сделать модель активной
+  </label>
+  <button class="btn" type="submit">Добавить</button>
+</form>
+<h3>Список моделей</h3>
+<table>
+  <thead>
+    <tr>
+      <th>ID</th>
+      <th>Название</th>
+      <th>Модель</th>
+      <th>Temperature</th>
+      <th>Max tokens</th>
+      <th>Активная</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for model in models %}
+    <tr>
+      <td>{{ model.id }}</td>
+      <td>{{ model.name }}</td>
+      <td>{{ model.model }}</td>
+      <td>{{ model.temperature }}</td>
+      <td>{{ model.max_tokens }}</td>
+      <td>{% if active_model_id == model.id|string %}Да{% elif model.is_default %}Да{% else %}Нет{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

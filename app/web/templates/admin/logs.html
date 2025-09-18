@@ -1,0 +1,43 @@
+{% extends 'admin/base.html' %}
+{% block title %}Логи — AI Router{% endblock %}
+{% block content %}
+<h2>Логи сообщений</h2>
+<form method="get">
+  <label>Количество записей
+    <input type="number" name="limit" value="{{ limit }}">
+  </label>
+  <button class="btn" type="submit">Показать</button>
+</form>
+<table>
+  <thead>
+    <tr>
+      <th>ID</th>
+      <th>Диалог</th>
+      <th>Пользователь</th>
+      <th>Сообщение</th>
+      <th>Ответ</th>
+      <th>Токены</th>
+      <th>Время</th>
+      <th>Действия</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for record in records %}
+    <tr>
+      <td>{{ record.id }}</td>
+      <td>{{ record.dialog_id }}</td>
+      <td>{{ record.user.username or record.user.telegram_id }}</td>
+      <td>{{ record.user_message }}</td>
+      <td>{{ record.llm_response or '—' }}</td>
+      <td>{{ record.tokens_used }}</td>
+      <td>{{ record.created_at }}</td>
+      <td>
+        <form class="inline" method="post" action="{{ url_for('admin.close_dialog', dialog_id=record.dialog_id) }}">
+          <button class="btn secondary" type="submit">Закрыть диалог</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

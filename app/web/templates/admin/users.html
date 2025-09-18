@@ -1,0 +1,47 @@
+{% extends 'admin/base.html' %}
+{% block title %}Пользователи — AI Router{% endblock %}
+{% block content %}
+<h2>Пользователи</h2>
+<form method="post">
+  <h3>Добавить или обновить пользователя</h3>
+  <label>Telegram ID
+    <input type="text" name="telegram_id" required>
+  </label>
+  <label>Username
+    <input type="text" name="username">
+  </label>
+  <label>Полное имя
+    <input type="text" name="full_name">
+  </label>
+  <button class="btn" type="submit">Сохранить</button>
+</form>
+<h3>Список пользователей</h3>
+<table>
+  <thead>
+    <tr>
+      <th>ID</th>
+      <th>Telegram ID</th>
+      <th>Username</th>
+      <th>Имя</th>
+      <th>Статус</th>
+      <th>Действия</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for user in users %}
+    <tr>
+      <td>{{ user.id }}</td>
+      <td>{{ user.telegram_id }}</td>
+      <td>{{ user.username or '—' }}</td>
+      <td>{{ user.full_name or '—' }}</td>
+      <td>{% if user.is_active %}Активен{% else %}Заблокирован{% endif %}</td>
+      <td>
+        <form class="inline" method="post" action="{{ url_for('admin.toggle_user', user_id=user.id) }}">
+          <button class="btn secondary" type="submit">{% if user.is_active %}Заблокировать{% else %}Разблокировать{% endif %}</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

@@ -1,0 +1,46 @@
+{% extends 'admin/base.html' %}
+{% block title %}Дашборд — AI Router{% endblock %}
+{% block content %}
+<h2>Дашборд</h2>
+<p>Статистика за {{ period }} дней.</p>
+<div class="stats">
+  <div class="stat-card"><strong>{{ stats.total_users }}</strong>Пользователи</div>
+  <div class="stat-card"><strong>{{ stats.active_users }}</strong>Активные пользователи</div>
+  <div class="stat-card"><strong>{{ stats.query_count }}</strong>Запросы</div>
+  <div class="stat-card"><strong>{{ stats.tokens_spent }}</strong>Токены</div>
+  <div class="stat-card"><strong>{{ stats.open_dialogs }}</strong>Открытые диалоги</div>
+</div>
+<h3>Статус бота</h3>
+<p>Текущее состояние: {% if is_bot_running %}<strong style="color:green;">запущен</strong>{% else %}<strong style="color:red;">остановлен</strong>{% endif %}</p>
+<form id="start-polling" class="inline" method="post" action="{{ url_for('admin.api_start_polling') }}" onsubmit="return sendApi(event);">
+  <button class="btn" type="submit">Запустить polling</button>
+</form>
+<form id="start-webhook" class="inline" method="post" action="{{ url_for('admin.api_start_webhook') }}" onsubmit="return sendApi(event);">
+  <button class="btn secondary" type="submit">Запустить webhook</button>
+</form>
+<form id="stop-bot" class="inline" method="post" action="{{ url_for('admin.api_stop_bot') }}" onsubmit="return sendApi(event);">
+  <button class="btn danger" type="submit">Остановить бота</button>
+</form>
+<h3>Активная модель</h3>
+{% set active_id = settings.get('active_model_id', '') %}
+<ul>
+  {% for model in models %}
+  <li>{% if active_id == model.id|string %}<strong>{{ model.name }}</strong>{% else %}{{ model.name }}{% endif %} — {{ model.model }}</li>
+  {% endfor %}
+</ul>
+<script>
+async function sendApi(event) {
+  event.preventDefault();
+  const form = event.target;
+  const response = await fetch(form.action, {method: 'POST', headers: {'Content-Type': 'application/json'}});
+  const data = await response.json();
+  if (data.status === 'ok') {
+    alert('Операция выполнена');
+    window.location.reload();
+  } else {
+    alert('Ошибка: ' + data.message);
+  }
+  return false;
+}
+</script>
+{% endblock %}

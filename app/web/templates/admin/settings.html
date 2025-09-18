@@ -1,0 +1,31 @@
+{% extends 'admin/base.html' %}
+{% block title %}Настройки — AI Router{% endblock %}
+{% block content %}
+<h2>Настройки</h2>
+<form method="post">
+  <label>OpenAI API Key
+    <input type="text" name="openai_api_key" value="{{ settings.get('openai_api_key', '') }}">
+  </label>
+  <label>Токен Telegram-бота
+    <input type="text" name="telegram_bot_token" value="{{ settings.get('telegram_bot_token', '') }}">
+  </label>
+  <label>URL вебхука
+    <input type="text" name="webhook_url" value="{{ settings.get('webhook_url', '') }}">
+  </label>
+  <label>Секрет вебхука
+    <input type="text" name="webhook_secret" value="{{ settings.get('webhook_secret', '') }}">
+  </label>
+  <label>Режим по умолчанию
+    <input type="text" name="default_mode" value="{{ settings.get('default_mode', 'default') }}">
+  </label>
+  <label>Активная модель
+    <select name="active_model_id">
+      <option value="">-- не выбрано --</option>
+      {% for model in models %}
+      <option value="{{ model.id }}" {% if settings.get('active_model_id') == model.id|string %}selected{% endif %}>{{ model.name }} ({{ model.model }})</option>
+      {% endfor %}
+    </select>
+  </label>
+  <button class="btn" type="submit">Сохранить</button>
+</form>
+{% endblock %}
