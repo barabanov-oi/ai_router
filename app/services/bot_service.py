@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import threading
 import time
-from typing import Iterable, Optional
+from logging import Logger
+from typing import Any, Callable, Iterable, Optional
 
-from flask import current_app
+from flask import Flask, current_app
 from telebot import TeleBot, types
 
 from ..models import Dialog, MessageLog, ModelConfig, User, db
@@ -47,6 +48,7 @@ class TelegramBotManager:
         self._bot: Optional[TeleBot] = None
         self._polling_thread: Optional[threading.Thread] = None
         self._stop_event = threading.Event()
+        self._flask_app: Optional[Flask] = None
 
     # NOTE[agent]: Метод проверяет активность бота.
     def is_running(self) -> bool:
@@ -66,11 +68,17 @@ class TelegramBotManager:
         if not token:
             raise RuntimeError("Telegram bot token is not configured")
 
+        flask_app = current_app._get_current_object()
+        self._flask_app = flask_app
         self._bot = self._create_bot(token)
         self._stop_event.clear()
-        self._polling_thread = threading.Thread(target=self._polling_loop, daemon=True)
+        self._polling_thread = threading.Thread(
+            target=self._polling_loop,
+            args=(flask_app,),
+            daemon=True,
+        )
         self._polling_thread.start()
-        current_app.logger.info("Запущен polling Telegram-бота")
+        flask_app.logger.info("Запущен polling Telegram-бота")
 
     # NOTE[agent]: Остановка бота и завершение фонового потока.
     def stop(self) -> None:
@@ -81,12 +89,12 @@ class TelegramBotManager:
             try:
                 self._bot.stop_polling()
             except Exception:  # pylint: disable=broad-except
-                current_app.logger.exception("Ошибка при остановке polling")
+                self._get_logger().exception("Ошибка при остановке polling")
         self._bot = None
         if self._polling_thread and self._polling_thread.is_alive():
             self._polling_thread.join(timeout=5)
         self._polling_thread = None
-        current_app.logger.info("Polling бота остановлен")
+        self._get_logger().info("Polling бота остановлен")
 
     # NOTE[agent]: Настройка webhook: установка URL и создание экземпляра бота.
     def start_webhook(self) -> str:
@@ -96,13 +104,15 @@ class TelegramBotManager:
         webhook_url = self._settings.get("webhook_url")
         if not token or not webhook_url:
             raise RuntimeError("Webhook url или token не настроены")
+        flask_app = current_app._get_current_object()
+        self._flask_app = flask_app
         self.stop()
         self._bot = self._create_bot(token)
         self._bot.remove_webhook()
         time.sleep(0.5)
         if not self._bot.set_webhook(url=webhook_url):
             raise RuntimeError("Не удалось установить webhook")
-        current_app.logger.info("Webhook установлен: %s", webhook_url)
+        flask_app.logger.info("Webhook установлен: %s", webhook_url)
         return webhook_url
 
     # NOTE[agent]: Вебхук использует этот метод для обработки обновлений.
@@ -119,16 +129,17 @@ class TelegramBotManager:
         self._bot.process_new_updates([update])
 
     # NOTE[agent]: Внутренний цикл polling с устойчивостью к ошибкам.
-    def _polling_loop(self) -> None:
+    def _polling_loop(self, flask_app: Flask) -> None:
         """Запускает TeleBot в бесконечном цикле с перезапуском при ошибке."""
 
         assert self._bot is not None
-        while not self._stop_event.is_set():
-            try:
-                self._bot.infinity_polling(timeout=60, long_polling_timeout=60)
-            except Exception:  # pylint: disable=broad-except
-                current_app.logger.exception("Ошибка в polling, перезапуск через 5 секунд")
-                time.sleep(5)
+        with flask_app.app_context():
+            while not self._stop_event.is_set():
+                try:
+                    self._bot.infinity_polling(timeout=60, long_polling_timeout=60)
+                except Exception:  # pylint: disable=broad-except
+                    flask_app.logger.exception("Ошибка в polling, перезапуск через 5 секунд")
+                    time.sleep(5)
 
     # NOTE[agent]: Создание экземпляра TeleBot и регистрация обработчиков.
     def _create_bot(self, token: str) -> TeleBot:
@@ -140,39 +151,56 @@ class TelegramBotManager:
         def handle_start(message: types.Message) -> None:
             # NOTE[agent]: Обработчик команды /start приветствует пользователя и фиксирует его в базе.
             """Обрабатывает команду /start."""
-            self._handle_start(message)
+            self._run_with_app_context(self._handle_start, message)
 
         @bot.message_handler(commands=["help"])
         def handle_help(message: types.Message) -> None:
             # NOTE[agent]: Обработчик команды /help отправляет подсказку.
             """Обрабатывает команду /help."""
-            self._handle_help(message)
+            self._run_with_app_context(self._handle_help, message)
 
         @bot.message_handler(commands=["settings"])
         def handle_settings(message: types.Message) -> None:
             # NOTE[agent]: Обработчик показывает режимы и позволяет выбрать.
             """Обрабатывает команду /settings."""
-            self._handle_settings(message)
+            self._run_with_app_context(self._handle_settings, message)
 
         @bot.callback_query_handler(func=lambda call: call.data.startswith("mode:"))
         def handle_mode_change(call: types.CallbackQuery) -> None:
             # NOTE[agent]: Обработчик смены режима переписывает настройку пользователя.
             """Реагирует на выбор режима ответа."""
-            self._handle_mode_change(call)
+            self._run_with_app_context(self._handle_mode_change, call)
 
         @bot.callback_query_handler(func=lambda call: call.data == "dialog:new")
         def handle_new_dialog(call: types.CallbackQuery) -> None:
             # NOTE[agent]: Обработчик завершает текущий диалог и открывает новый.
             """Сбрасывает текущий контекст диалога."""
-            self._handle_new_dialog(call)
+            self._run_with_app_context(self._handle_new_dialog, call)
 
         @bot.message_handler(content_types=["text"])
         def handle_text(message: types.Message) -> None:
             # NOTE[agent]: Основной обработчик, который направляет запрос к LLM.
             """Обрабатывает текстовые сообщения пользователей."""
-            self._handle_message(message)
+            self._run_with_app_context(self._handle_message, message)
 
         return bot
+
+    # NOTE[agent]: Вспомогательный метод, чтобы запускать обработчики с нужным контекстом.
+    def _run_with_app_context(self, func: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
+        """Выполняет обработчик внутри контекста Flask-приложения."""
+
+        if self._flask_app is not None:
+            with self._flask_app.app_context():
+                return func(*args, **kwargs)
+        return func(*args, **kwargs)
+
+    # NOTE[agent]: Возвращает актуальный логгер приложения даже вне контекста.
+    def _get_logger(self) -> Logger:
+        """Предоставляет логгер Flask-приложения для сообщений."""
+
+        if self._flask_app is not None:
+            return self._flask_app.logger
+        return current_app.logger
 
     # NOTE[agent]: Приветственное сообщение и первичная регистрация пользователя.
     def _handle_start(self, message: types.Message) -> None:
