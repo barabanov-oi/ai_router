@@ -12,6 +12,7 @@ from flask import Flask
 
 from .models import db, AppSetting, ModelConfig
 from .services.bot_service import TelegramBotManager
+from .services.openai_service import OpenAIService
 
 
 # NOTE[agent]: Функция создаёт и настраивает экземпляр приложения Flask.
@@ -113,10 +114,25 @@ def _ensure_default_settings() -> None:
 def _ensure_default_model() -> None:
     """Гарантирует наличие хотя бы одной конфигурации модели в базе."""
 
+    replacements = OpenAIService.MODEL_REPLACEMENTS
+    if replacements:
+        outdated_models = (
+            ModelConfig.query.filter(ModelConfig.model.in_(list(replacements.keys()))).all()
+        )
+        updated = False
+        for config in outdated_models:
+            new_model = replacements[config.model]
+            if config.name == config.model:
+                config.name = new_model
+            config.model = new_model
+            updated = True
+        if updated:
+            db.session.commit()
+
     if ModelConfig.query.count() == 0:
         model = ModelConfig(
-            name="gpt-3.5-turbo",
-            model="gpt-3.5-turbo",
+            name=OpenAIService.DEFAULT_MODEL,
+            model=OpenAIService.DEFAULT_MODEL,
             temperature=1.0,
             max_tokens=512,
             is_default=True,

@@ -381,7 +381,9 @@ class TelegramBotManager:
             model = query.filter_by(is_default=True).first()
         if not model:
             model = query.first()
-        base_config = model.to_openai_kwargs() if model else {"model": "gpt-3.5-turbo"}
+        base_config = (
+            model.to_openai_kwargs() if model else {"model": OpenAIService.DEFAULT_MODEL}
+        )
         customized = base_config.copy()
         if "temperature" in mode_definition:
             customized["temperature"] = mode_definition["temperature"]

@@ -17,6 +17,16 @@ class OpenAIService:
     """Обеспечивает отправку сообщений в OpenAI Chat Completion API."""
 
     CHAT_URL = "https://api.openai.com/v1/chat/completions"
+    DEFAULT_MODEL = "gpt-4o-mini"
+    # NOTE[agent]: Сопоставление устаревших моделей с поддерживаемыми аналогами.
+    MODEL_REPLACEMENTS = {
+        "gpt-3.5-turbo": DEFAULT_MODEL,
+        "gpt-3.5-turbo-0125": DEFAULT_MODEL,
+        "gpt-3.5-turbo-1106": DEFAULT_MODEL,
+        "gpt-3.5-turbo-16k": DEFAULT_MODEL,
+        "gpt-3.5-turbo-instruct": DEFAULT_MODEL,
+        "gpt-3.5-turbo-0301": DEFAULT_MODEL,
+    }
 
     def __init__(self) -> None:
         """Инициализирует сервис и проверяет наличие API-ключа."""
@@ -45,6 +55,18 @@ class OpenAIService:
             "messages": list(messages),
         }
         payload.update(model_config)
+
+        model_name = payload.get("model")
+        if not model_name:
+            payload["model"] = self.DEFAULT_MODEL
+            model_name = self.DEFAULT_MODEL
+        replacement = self.MODEL_REPLACEMENTS.get(model_name)
+        if replacement and replacement != model_name:
+            current_app.logger.warning(
+                "Модель %s недоступна, будет использована %s", model_name, replacement
+            )
+            payload["model"] = replacement
+
         current_app.logger.debug("Запрос к OpenAI: %s", json.dumps({"payload": payload}, ensure_ascii=False))
 
         try:
