@@ -50,7 +50,8 @@ def create_app(config: dict[str, Any] | None = None) -> Flask:
 
     _register_blueprints(app)
 
-    app.extensions["bot_manager"] = TelegramBotManager()
+    bot_manager = TelegramBotManager(app)
+    app.extensions["bot_manager"] = bot_manager
 
     return app
 
