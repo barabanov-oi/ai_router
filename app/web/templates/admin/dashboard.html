@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Админ-панель LLM</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; padding: 0; background: #f4f5f7; }
+        header { background: #1f2933; color: white; padding: 16px 24px; }
+        main { padding: 24px; display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 24px; }
+        section { background: white; border-radius: 8px; padding: 16px; box-shadow: 0 2px 6px rgba(0,0,0,0.05); }
+        h2 { margin-top: 0; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 6px 8px; border-bottom: 1px solid #eee; font-size: 14px; text-align: left; }
+        form { display: flex; flex-direction: column; gap: 8px; }
+        label { font-weight: bold; font-size: 13px; }
+        input, select, button, textarea { padding: 8px; font-size: 14px; border: 1px solid #ccc; border-radius: 4px; }
+        button { background: #2563eb; color: white; border: none; cursor: pointer; }
+        button.secondary { background: #6b7280; }
+        .flex-row { display: flex; gap: 8px; align-items: center; }
+        .status { font-size: 14px; margin-top: 8px; }
+        .logs { max-height: 260px; overflow-y: auto; }
+    </style>
+</head>
+<body>
+<header>
+    <h1>Панель управления LLM</h1>
+</header>
+<main>
+    <section>
+        <h2>Статистика</h2>
+        <div class="flex-row">
+            <label for="stats-period">Период:</label>
+            <select id="stats-period">
+                <option value="day">День</option>
+                <option value="week">Неделя</option>
+                <option value="month">Месяц</option>
+            </select>
+            <button id="refresh-stats">Обновить</button>
+        </div>
+        <ul id="stats-summary"></ul>
+    </section>
+
+    <section>
+        <h2>Пользователи</h2>
+        <form id="user-form">
+            <label>Telegram ID</label>
+            <input name="telegram_id" required>
+            <label>Имя пользователя</label>
+            <input name="username">
+            <label>Тип подписки</label>
+            <select name="subscription_type">
+                <option value="free">Free</option>
+                <option value="paid">Paid</option>
+            </select>
+            <label class="flex-row"><input type="checkbox" name="is_active" checked> Активен</label>
+            <button type="submit">Создать/обновить</button>
+        </form>
+        <table>
+            <thead>
+            <tr><th>ID</th><th>Telegram</th><th>Имя</th><th>Статус</th></tr>
+            </thead>
+            <tbody id="users-table"></tbody>
+        </table>
+    </section>
+
+    <section>
+        <h2>Модели</h2>
+        <form id="model-form">
+            <label>Название</label>
+            <input name="name" required>
+            <label>Отображаемое имя</label>
+            <input name="display_name" required>
+            <label>Идентификатор модели</label>
+            <input name="model" required>
+            <label>API ключ</label>
+            <textarea name="api_key" required></textarea>
+            <label>Базовый URL (опционально)</label>
+            <input name="base_url">
+            <label>Температура</label>
+            <input name="temperature" type="number" step="0.1" value="0.7">
+            <label>Макс. токены</label>
+            <input name="max_tokens" type="number">
+            <label class="flex-row"><input type="checkbox" name="is_default"> По умолчанию</label>
+            <label class="flex-row"><input type="checkbox" name="is_active" checked> Активна</label>
+            <button type="submit">Сохранить модель</button>
+        </form>
+        <table>
+            <thead>
+            <tr><th>ID</th><th>Название</th><th>Модель</th><th>Статус</th></tr>
+            </thead>
+            <tbody id="models-table"></tbody>
+        </table>
+    </section>
+
+    <section>
+        <h2>Настройки</h2>
+        <form id="settings-form">
+            <label>Токен телеграм-бота</label>
+            <input name="telegram_bot_token" placeholder="1234:ABC...">
+            <label>Модель по умолчанию (имя)</label>
+            <input name="default_model_name" placeholder="gpt-3.5-turbo">
+            <button type="submit">Сохранить настройки</button>
+        </form>
+        <pre id="settings-output"></pre>
+    </section>
+
+    <section>
+        <h2>Управление ботом</h2>
+        <div class="flex-row">
+            <button id="start-polling">Запустить polling</button>
+            <button id="start-webhook">Запустить webhook</button>
+            <button id="stop-bot" class="secondary">Остановить</button>
+        </div>
+        <div class="status" id="bot-status"></div>
+    </section>
+
+    <section class="logs">
+        <h2>Логи запросов</h2>
+        <table>
+            <thead>
+            <tr><th>Диалог</th><th>Сообщение</th><th>Пользователь</th><th>Ответ</th><th>Время</th></tr>
+            </thead>
+            <tbody id="logs-table"></tbody>
+        </table>
+    </section>
+</main>
+<script>
+    async function fetchJson(url, options = {}) {
+        const response = await fetch(url, Object.assign({headers: {'Content-Type': 'application/json'}}, options));
+        if (!response.ok) {
+            const text = await response.text();
+            throw new Error(text || 'Ошибка запроса');
+        }
+        return response.json();
+    }
+
+    async function loadStats() {
+        const period = document.getElementById('stats-period').value;
+        const data = await fetchJson(`/admin/api/statistics?period=${period}`);
+        const list = document.getElementById('stats-summary');
+        list.innerHTML = '';
+        list.insertAdjacentHTML('beforeend', `<li>Запросов: ${data.total_requests}</li>`);
+        list.insertAdjacentHTML('beforeend', `<li>Активные пользователи: ${data.active_users}</li>`);
+        list.insertAdjacentHTML('beforeend', `<li>Токенов: ${data.total_tokens}</li>`);
+    }
+
+    async function loadUsers() {
+        const data = await fetchJson('/admin/api/users');
+        const tbody = document.getElementById('users-table');
+        tbody.innerHTML = data.map(u => `<tr><td>${u.id}</td><td>${u.telegram_id}</td><td>${u.username || ''}</td><td>${u.is_active ? 'Активен' : 'Заблокирован'}</td></tr>`).join('');
+    }
+
+    async function loadModels() {
+        const data = await fetchJson('/admin/api/models');
+        const tbody = document.getElementById('models-table');
+        tbody.innerHTML = data.map(m => `<tr><td>${m.id}</td><td>${m.display_name}</td><td>${m.model}</td><td>${m.is_active ? (m.is_default ? 'Активна, по умолчанию' : 'Активна') : 'Отключена'}</td></tr>`).join('');
+    }
+
+    async function loadSettings() {
+        const data = await fetchJson('/admin/api/settings');
+        document.getElementById('settings-output').textContent = JSON.stringify(data, null, 2);
+        const form = document.getElementById('settings-form');
+        form.telegram_bot_token.value = data.telegram_bot_token || '';
+        form.default_model_name.value = data.default_model_name || '';
+    }
+
+    async function loadLogs() {
+        const data = await fetchJson('/admin/api/logs?limit=20');
+        const tbody = document.getElementById('logs-table');
+        tbody.innerHTML = data.map(log => `<tr><td>${log.conversation_id}</td><td>${log.user_message}</td><td>${log.user_id}</td><td>${log.assistant_response || ''}</td><td>${log.request_timestamp}</td></tr>`).join('');
+    }
+
+    async function loadBotStatus() {
+        const data = await fetchJson('/admin/api/bot/status');
+        document.getElementById('bot-status').textContent = data.running ? `Бот запущен (${data.mode})` : 'Бот остановлен';
+    }
+
+    document.getElementById('refresh-stats').addEventListener('click', event => {
+        event.preventDefault();
+        loadStats().catch(alert);
+    });
+
+    document.getElementById('user-form').addEventListener('submit', async event => {
+        event.preventDefault();
+        const form = event.target;
+        const payload = {
+            telegram_id: form.telegram_id.value,
+            username: form.username.value,
+            subscription_type: form.subscription_type.value,
+            is_active: form.is_active.checked,
+        };
+        await fetchJson('/admin/api/users', {method: 'POST', body: JSON.stringify(payload)});
+        form.reset();
+        loadUsers().catch(alert);
+    });
+
+    document.getElementById('model-form').addEventListener('submit', async event => {
+        event.preventDefault();
+        const form = event.target;
+        const payload = {
+            name: form.name.value,
+            display_name: form.display_name.value,
+            model: form.model.value,
+            api_key: form.api_key.value,
+            base_url: form.base_url.value || null,
+            temperature: parseFloat(form.temperature.value || '0.7'),
+            max_tokens: form.max_tokens.value ? parseInt(form.max_tokens.value, 10) : null,
+            is_default: form.is_default.checked,
+            is_active: form.is_active.checked,
+        };
+        await fetchJson('/admin/api/models', {method: 'POST', body: JSON.stringify(payload)});
+        form.reset();
+        loadModels().catch(alert);
+    });
+
+    document.getElementById('settings-form').addEventListener('submit', async event => {
+        event.preventDefault();
+        const form = event.target;
+        await fetchJson('/admin/api/settings/telegram_bot_token', {
+            method: 'PUT',
+            body: JSON.stringify({value: form.telegram_bot_token.value})
+        });
+        await fetchJson('/admin/api/settings/default_model_name', {
+            method: 'PUT',
+            body: JSON.stringify({value: form.default_model_name.value})
+        });
+        loadSettings().catch(alert);
+    });
+
+    document.getElementById('start-polling').addEventListener('click', async event => {
+        event.preventDefault();
+        await fetchJson('/admin/api/bot/polling', {method: 'POST'});
+        loadBotStatus().catch(alert);
+    });
+
+    document.getElementById('start-webhook').addEventListener('click', async event => {
+        event.preventDefault();
+        await fetchJson('/admin/api/bot/webhook', {method: 'POST'});
+        loadBotStatus().catch(alert);
+    });
+
+    document.getElementById('stop-bot').addEventListener('click', async event => {
+        event.preventDefault();
+        await fetchJson('/admin/api/bot/stop', {method: 'POST'});
+        loadBotStatus().catch(alert);
+    });
+
+    Promise.all([
+        loadStats(),
+        loadUsers(),
+        loadModels(),
+        loadSettings(),
+        loadLogs(),
+        loadBotStatus(),
+    ]).catch(error => {
+        console.error(error);
+        alert('Ошибка загрузки данных: ' + error.message);
+    });
+</script>
+</body>
+</html>
