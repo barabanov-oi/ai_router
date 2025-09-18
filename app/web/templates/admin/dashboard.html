@@ -1,0 +1,93 @@
+{% extends 'admin/layout.html' %}
+{% block content %}
+<h1 class="mb-4">Дашборд</h1>
+<form class="row g-3 mb-4" method="get">
+    <div class="col-auto">
+        <label for="period" class="col-form-label">Период</label>
+    </div>
+    <div class="col-auto">
+        <select class="form-select" id="period" name="period">
+            <option value="day" {% if period == 'day' %}selected{% endif %}>Последние 24 часа</option>
+            <option value="week" {% if period == 'week' %}selected{% endif %}>Последние 7 дней</option>
+            <option value="month" {% if period == 'month' %}selected{% endif %}>Последние 30 дней</option>
+        </select>
+    </div>
+    <div class="col-auto">
+        <button type="submit" class="btn btn-primary">Обновить</button>
+    </div>
+</form>
+<div class="row">
+    <div class="col-md-3">
+        <div class="card text-bg-primary mb-3">
+            <div class="card-body">
+                <h5 class="card-title">Запросов</h5>
+                <p class="card-text display-6">{{ stats.total_requests }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-bg-success mb-3">
+            <div class="card-body">
+                <h5 class="card-title">Активные пользователи</h5>
+                <p class="card-text display-6">{{ stats.active_users }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-bg-warning mb-3">
+            <div class="card-body">
+                <h5 class="card-title">Токенов израсходовано</h5>
+                <p class="card-text display-6">{{ stats.total_tokens }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-bg-secondary mb-3">
+            <div class="card-body">
+                <h5 class="card-title">Всего пользователей</h5>
+                <p class="card-text display-6">{{ stats.total_users }}</p>
+            </div>
+        </div>
+    </div>
+</div>
+<div class="card mb-4">
+    <div class="card-header">Активная модель</div>
+    <div class="card-body">
+        {% if settings.active_model %}
+            <p class="mb-1"><strong>Название:</strong> {{ settings.active_model.name }}</p>
+            <p class="mb-1"><strong>Модель:</strong> {{ settings.active_model.model_name }}</p>
+            <p class="mb-1"><strong>Температура:</strong> {{ settings.active_model.temperature }}</p>
+            <p class="mb-0"><strong>Макс. токенов:</strong> {{ settings.active_model.max_tokens }}</p>
+        {% else %}
+            <p class="mb-0">Активная модель не выбрана.</p>
+        {% endif %}
+    </div>
+</div>
+<div class="card">
+    <div class="card-header">Последние модели</div>
+    <div class="card-body">
+        <table class="table table-striped">
+            <thead>
+            <tr>
+                <th>Название</th>
+                <th>Модель</th>
+                <th>Статус</th>
+                <th>Добавлена</th>
+            </tr>
+            </thead>
+            <tbody>
+            {% for model in models %}
+                <tr>
+                    <td>{{ model.name }}</td>
+                    <td>{{ model.model_name }}</td>
+                    <td>{% if model.is_active %}<span class="badge bg-success">активна</span>{% else %}—{% endif %}</td>
+                    <td>{{ model.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+                </tr>
+            {% else %}
+                <tr><td colspan="4" class="text-center">Нет сохранённых моделей</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

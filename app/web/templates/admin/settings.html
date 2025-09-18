@@ -1,0 +1,48 @@
+{% extends 'admin/layout.html' %}
+{% block content %}
+<h1 class="mb-4">Настройки</h1>
+<div class="row">
+    <div class="col-md-6">
+        <div class="card mb-4">
+            <div class="card-header">Telegram бот</div>
+            <div class="card-body">
+                <form method="post">
+                    <input type="hidden" name="action" value="bot_token">
+                    <div class="mb-3">
+                        <label class="form-label">Токен</label>
+                        <input type="text" class="form-control" name="bot_token" value="{{ settings.bot_token or '' }}">
+                    </div>
+                    <button type="submit" class="btn btn-primary">Сохранить токен</button>
+                </form>
+                <hr>
+                <form method="post">
+                    <input type="hidden" name="action" value="webhook">
+                    <div class="mb-3">
+                        <label class="form-label">Webhook URL</label>
+                        <input type="text" class="form-control" name="webhook_url" value="{{ settings.webhook_url or '' }}">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Секрет</label>
+                        <input type="text" class="form-control" name="webhook_secret" value="{{ settings.webhook_secret or '' }}">
+                    </div>
+                    <button type="submit" class="btn btn-secondary">Обновить webhook</button>
+                </form>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card mb-4">
+            <div class="card-header">Управление ботом</div>
+            <div class="card-body">
+                <p>Текущий статус: <strong>{{ bot_status }}</strong></p>
+                <form method="post" action="{{ url_for('admin.start_bot') }}" class="d-inline">
+                    <button type="submit" class="btn btn-success">Запустить polling</button>
+                </form>
+                <form method="post" action="{{ url_for('admin.start_bot_webhook') }}" class="d-inline">
+                    <button type="submit" class="btn btn-warning">Запустить webhook</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
