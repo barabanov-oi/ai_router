@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import io
+import logging
+import sys
 import threading
 import time
-from logging import Logger
+from logging import Handler, Logger
 from typing import Any, Callable, Iterable, Optional
 
 from flask import Flask, current_app
@@ -70,6 +73,7 @@ class TelegramBotManager:
 
         flask_app = current_app._get_current_object()
         self._flask_app = flask_app
+        self._configure_console_encoding(flask_app.logger)
         self._bot = self._create_bot(token)
         self._stop_event.clear()
         self._polling_thread = threading.Thread(
@@ -106,6 +110,7 @@ class TelegramBotManager:
             raise RuntimeError("Webhook url или token не настроены")
         flask_app = current_app._get_current_object()
         self._flask_app = flask_app
+        self._configure_console_encoding(flask_app.logger)
         self.stop()
         self._bot = self._create_bot(token)
         self._bot.remove_webhook()
@@ -198,9 +203,90 @@ class TelegramBotManager:
     def _get_logger(self) -> Logger:
         """Предоставляет логгер Flask-приложения для сообщений."""
 
-        if self._flask_app is not None:
-            return self._flask_app.logger
-        return current_app.logger
+        logger = self._flask_app.logger if self._flask_app is not None else current_app.logger
+        self._configure_console_encoding(logger)
+        return logger
+
+    def _configure_console_encoding(self, logger: Logger) -> None:
+        """Обеспечивает корректную кодировку логов в консоли для Windows и Linux."""
+
+        for stream_name in ("stdout", "stderr"):
+            self._ensure_process_stream_utf8(stream_name)
+
+        processed_loggers = {logger, logging.getLogger()}
+        for active_logger in processed_loggers:
+            for handler in list(active_logger.handlers):
+                self._ensure_handler_stream_utf8(handler)
+
+    def _ensure_process_stream_utf8(self, stream_name: str) -> None:
+        """Переключает стандартные потоки процесса на UTF-8 при необходимости."""
+
+        stream = getattr(sys, stream_name, None)
+        if stream is None:
+            return
+        encoding = getattr(stream, "encoding", None)
+        if isinstance(encoding, str) and encoding.lower() == "utf-8":
+            return
+        reconfigure = getattr(stream, "reconfigure", None)
+        if callable(reconfigure):
+            try:
+                reconfigure(encoding="utf-8")
+                return
+            except (LookupError, OSError, ValueError):
+                pass
+        buffer = getattr(stream, "buffer", None)
+        if buffer is None:
+            return
+        try:
+            stream.flush()
+        except Exception:  # pylint: disable=broad-except
+            pass
+        try:
+            wrapped = io.TextIOWrapper(buffer, encoding="utf-8", errors="replace", line_buffering=True)
+        except (LookupError, ValueError):
+            return
+        setattr(sys, stream_name, wrapped)
+
+    def _ensure_handler_stream_utf8(self, handler: Handler) -> None:
+        """Настраивает обработчик логирования на использование UTF-8 потока."""
+
+        stream = getattr(handler, "stream", None)
+        if stream is None:
+            return
+        wrapped = self._wrap_stream_utf8(stream)
+        if wrapped is stream:
+            return
+        set_stream = getattr(handler, "setStream", None)
+        if callable(set_stream):
+            set_stream(wrapped)
+        else:
+            handler.stream = wrapped
+
+    @staticmethod
+    def _wrap_stream_utf8(stream: Any) -> Any:
+        """Возвращает поток с кодировкой UTF-8, создавая оболочку при необходимости."""
+
+        encoding = getattr(stream, "encoding", None)
+        if isinstance(encoding, str) and encoding.lower() == "utf-8":
+            return stream
+        reconfigure = getattr(stream, "reconfigure", None)
+        if callable(reconfigure):
+            try:
+                reconfigure(encoding="utf-8")
+                return stream
+            except (LookupError, OSError, ValueError):
+                pass
+        buffer = getattr(stream, "buffer", None)
+        if buffer is None:
+            return stream
+        try:
+            stream.flush()
+        except Exception:  # pylint: disable=broad-except
+            pass
+        try:
+            return io.TextIOWrapper(buffer, encoding="utf-8", errors="replace", line_buffering=True)
+        except (LookupError, ValueError):
+            return stream
 
     # NOTE[agent]: Приветственное сообщение и первичная регистрация пользователя.
     def _handle_start(self, message: types.Message) -> None:
