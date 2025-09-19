@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import json
+import re
 from typing import Iterable
 
-import requests
+from openai import OpenAI
 from flask import current_app
 
 from ..models import MessageLog, db
@@ -15,8 +16,6 @@ from .settings_service import SettingsService
 # NOTE[agent]: Класс служит для общения с OpenAI с учётом настроек приложения.
 class OpenAIService:
     """Обеспечивает отправку сообщений в OpenAI Chat Completion API."""
-
-    CHAT_URL = "https://api.openai.com/v1/chat/completions"
 
     def __init__(self) -> None:
         """Инициализирует сервис и проверяет наличие API-ключа."""
@@ -41,24 +40,17 @@ class OpenAIService:
             current_app.logger.error(msg)
             raise RuntimeError(msg)
 
-        payload = {
-            "messages": list(messages),
-        }
-        payload.update(model_config)
+        payload = {"messages": list(messages), **model_config}
         current_app.logger.debug("Запрос к OpenAI: %s", json.dumps({"payload": payload}, ensure_ascii=False))
 
         try:
-            response = requests.post(
-                self.CHAT_URL,
-                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-                json=payload,
-                timeout=60,
-            )
-            response.raise_for_status()
-        except requests.RequestException as exc:
+            client = OpenAI(api_key=api_key)
+            response = client.chat.completions.create(**payload)
+        except Exception as exc:  # pylint: disable=broad-except
             current_app.logger.exception("Ошибка при обращении к OpenAI")
             raise RuntimeError("Не удалось выполнить запрос к OpenAI") from exc
-        data = response.json()
+
+        data = response.model_dump()
         current_app.logger.debug("Ответ OpenAI: %s", json.dumps(data, ensure_ascii=False))
         return data
 
@@ -78,9 +70,15 @@ class OpenAIService:
         if not choices:
             current_app.logger.error("Ответ OpenAI не содержит вариантов")
             raise RuntimeError("Ответ OpenAI не содержит вариантов")
-        message = choices[0]["message"]["content"]
+        message = self._strip_think_tags(choices[0]["message"].get("content"))
         usage = data.get("usage", {})
         tokens_used = int(usage.get("total_tokens", usage.get("completion_tokens", 0)))
         log_entry.register_response(message, tokens_used)
         db.session.commit()
         return message
+
+    @staticmethod
+    def _strip_think_tags(text: str | None) -> str:
+        """Удаляет из ответа блоки вида <think>...</think>."""
+
+        return re.sub(r"(?is)<think>.*?</think>", "", text or "").strip()
