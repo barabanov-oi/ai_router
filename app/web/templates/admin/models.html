@@ -2,32 +2,6 @@
 {% block title %}Модели — AI Router{% endblock %}
 {% block content %}
 <h2>Модели</h2>
-<form method="post" class="model-form">
-  <input type="hidden" name="action" value="create">
-  <h3>Новая конфигурация</h3>
-  <label>Название
-    <input type="text" name="name" required>
-  </label>
-  <label>Идентификатор модели
-    <input type="text" name="model" required>
-  </label>
-  <label>Temperature
-    <input type="number" step="0.1" name="temperature" value="1.0">
-  </label>
-  <label>Max tokens
-    <input type="number" name="max_tokens" value="512">
-  </label>
-  <label>Top P
-    <input type="number" step="0.1" name="top_p" value="1.0">
-  </label>
-  <label>Инструкция
-    <textarea name="system_instruction" placeholder="Системный промпт для модели"></textarea>
-  </label>
-  <label>
-    <input type="checkbox" name="is_default"> Сделать модель активной
-  </label>
-  <button class="btn" type="submit">Добавить</button>
-</form>
 <h3>Список моделей</h3>
 <table>
   <thead>
@@ -49,7 +23,14 @@
       <td>{{ model.model }}</td>
       <td>{{ model.temperature }}</td>
       <td>{{ model.max_tokens }}</td>
-      <td>{{ model.system_instruction[:40] ~ ('…' if model.system_instruction and model.system_instruction|length > 40 else '') or '—' }}</td>
+      <td>
+        {% if model.system_instruction %}
+          {{ model.system_instruction[:40] ~ ('…' if model.system_instruction|length > 40 else '') }}
+        {% else %}
+          —
+        {% endif %}
+      </td>
+
       <td>{% if active_model_id == model.id|string %}Да{% elif not active_model_id and model.is_default %}Да{% else %}Нет{% endif %}</td>
     </tr>
     {% endfor %}
@@ -91,4 +72,30 @@
 {% else %}
 <p>Конфигурации ещё не созданы.</p>
 {% endif %}
+<form method="post" class="model-form">
+  <input type="hidden" name="action" value="create">
+  <h3>Новая конфигурация</h3>
+  <label>Название
+    <input type="text" name="name" required>
+  </label>
+  <label>Идентификатор модели
+    <input type="text" name="model" required>
+  </label>
+  <label>Temperature
+    <input type="number" step="0.1" name="temperature" value="1.0">
+  </label>
+  <label>Max tokens
+    <input type="number" name="max_tokens" value="512">
+  </label>
+  <label>Top P
+    <input type="number" step="0.1" name="top_p" value="1.0">
+  </label>
+  <label>Инструкция
+    <textarea name="system_instruction" placeholder="Системный промпт для модели"></textarea>
+  </label>
+  <label>
+    <input type="checkbox" name="is_default"> Сделать модель активной
+  </label>
+  <button class="btn" type="submit">Добавить</button>
+</form>
 {% endblock %}
