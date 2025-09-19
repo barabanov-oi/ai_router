@@ -95,8 +95,17 @@ class OpenAIService:
         if endpoint in {"chat", "responses"}:
             return endpoint
         model_name = str(model_config.get("model", ""))
-        responses_prefixes = ("o1", "o3", "o4", "gpt-4.1")
-        if any(model_name.startswith(prefix) for prefix in responses_prefixes):
+        responses_prefixes = (
+            "o1",
+            "o3",
+            "o4",
+            "gpt-4.1",
+            "gpt-4o",
+            "gpt-5",
+            "chatgpt-4o",
+        )
+        normalized = model_name.lower()
+        if any(normalized.startswith(prefix) for prefix in responses_prefixes):
             return "responses"
         return "chat"
 
