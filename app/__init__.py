@@ -9,9 +9,15 @@ from pathlib import Path
 from typing import Any
 
 from flask import Flask
+from flask_migrate import Migrate
+from sqlalchemy.exc import SQLAlchemyError
 
 from .models import db, AppSetting, ModelConfig
 from .services.bot_service import TelegramBotManager
+
+
+# NOTE[agent]: Экземпляр мигратора (Alembic через Flask-Migrate).
+migrate = Migrate(compare_type=True)
 
 
 # NOTE[agent]: Функция создаёт и настраивает экземпляр приложения Flask.
@@ -27,7 +33,11 @@ def create_app(config: dict[str, Any] | None = None) -> Flask:
 
     app = Flask(__name__, instance_relative_config=True)
 
-    default_db_path = os.environ.get("AI_ROUTER_DB", "sqlite:///" + str(Path(app.instance_path) / "ai_router.sqlite"))
+    # NOTE[agent]: Конфигурация по умолчанию; может быть переопределена через env и аргумент `config`.
+    default_db_path = os.environ.get(
+        "AI_ROUTER_DB",
+        "sqlite:///" + str(Path(app.instance_path) / "ai_router.sqlite"),
+    )
     app.config.from_mapping(
         SECRET_KEY=os.environ.get("AI_ROUTER_SECRET", "development-secret"),
         SQLALCHEMY_DATABASE_URI=default_db_path,
@@ -41,15 +51,18 @@ def create_app(config: dict[str, Any] | None = None) -> Flask:
     _configure_logging(app)
     _ensure_instance_folder(app)
 
+    # NOTE[agent]: Инициализация БД и миграций.
     db.init_app(app)
+    migrate.init_app(app, db)
 
+    # NOTE[agent]: Не вызываем db.create_all(); схему меняем через миграции.
+    # Инициализацию дефолтных записей выполняем только если таблицы доступны.
     with app.app_context():
-        db.create_all()
-        _ensure_default_settings()
-        _ensure_default_model()
+        _try_seed_defaults(app)
 
     _register_blueprints(app)
 
+    # NOTE[agent]: Менеджер бота (хранится в app.extensions).
     bot_manager = TelegramBotManager(app)
     app.extensions["bot_manager"] = bot_manager
 
@@ -88,6 +101,17 @@ def _ensure_instance_folder(app: Flask) -> None:
         app.logger.exception("Не удалось создать директорию instance")
 
 
+# NOTE[agent]: Безопасная инициализация дефолтных записей — только если таблицы существуют.
+def _try_seed_defaults(app: Flask) -> None:
+    """Пытается создать базовые настройки и дефолтную модель, если таблицы уже существуют."""
+    try:
+        _ensure_default_settings()
+        _ensure_default_model()
+    except SQLAlchemyError as exc:
+        # Таблицы могут быть ещё не созданы (до flask db upgrade).
+        app.logger.warning("Пропущена инициализация дефолтных данных: %s", exc)
+
+
 # NOTE[agent]: Настройки по умолчанию создаются при первом запуске.
 def _ensure_default_settings() -> None:
     """Создаёт базовые настройки, если они отсутствуют в базе."""
@@ -101,12 +125,14 @@ def _ensure_default_settings() -> None:
         "active_model_id": "",
     }
 
+    created = False
     for key, value in defaults.items():
         setting = AppSetting.query.filter_by(key=key).first()
         if not setting:
-            setting = AppSetting(key=key, value=value)
-            db.session.add(setting)
-    db.session.commit()
+            db.session.add(AppSetting(key=key, value=value))
+            created = True
+    if created:
+        db.session.commit()
 
 
 # NOTE[agent]: Создаём типовую конфигурацию модели, чтобы система работала "из коробки".
@@ -114,18 +140,25 @@ def _ensure_default_model() -> None:
     """Гарантирует наличие хотя бы одной конфигурации модели в базе."""
 
     if ModelConfig.query.count() == 0:
+        # NOTE[agent]: Поля подстраиваются под текущую схему ModelConfig.
+        # Если у модели используется provider_id/instruction — адаптируй ниже.
         model = ModelConfig(
             name="gpt-3.5-turbo",
-            model="gpt-3.5-turbo",
+            model="gpt-3.5-turbo",      # если в схеме вместо `model` используется `provider_id`, замени соответствующим полем
             temperature=1.0,
             max_tokens=512,
             is_default=True,
         )
         db.session.add(model)
         db.session.commit()
+
         default_setting = AppSetting.query.filter_by(key="active_model_id").first()
         if default_setting:
-            default_setting.update_value(str(model.id))
+            # Предпочтительно использовать метод-мутатор, если есть; иначе простое присваивание и commit.
+            try:
+                default_setting.update_value(str(model.id))  # кастомный метод, если реализован
+            except AttributeError:
+                default_setting.value = str(model.id)
             db.session.commit()
 
 
