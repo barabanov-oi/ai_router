@@ -1,0 +1,141 @@
+{
+  "default": {
+    "allowed_params": [
+      "model",
+      "temperature",
+      "max_tokens",
+      "top_p",
+      "frequency_penalty",
+      "presence_penalty"
+    ],
+    "aliases": {}
+  },
+  "gpt-3.5-turbo": {
+    "allowed_params": [
+      "model",
+      "temperature",
+      "max_tokens",
+      "top_p",
+      "frequency_penalty",
+      "presence_penalty"
+    ],
+    "aliases": {}
+  },
+  "gpt-4.1": {
+    "allowed_params": [
+      "model",
+      "temperature",
+      "max_completion_tokens",
+      "top_p",
+      "frequency_penalty",
+      "presence_penalty"
+    ],
+    "aliases": {
+      "max_tokens": "max_completion_tokens"
+    }
+  },
+  "gpt-4.1-mini": {
+    "allowed_params": [
+      "model",
+      "temperature",
+      "max_completion_tokens",
+      "top_p",
+      "frequency_penalty",
+      "presence_penalty"
+    ],
+    "aliases": {
+      "max_tokens": "max_completion_tokens"
+    }
+  },
+  "gpt-4.1-nano": {
+    "allowed_params": [
+      "model",
+      "temperature",
+      "max_completion_tokens",
+      "top_p",
+      "frequency_penalty",
+      "presence_penalty"
+    ],
+    "aliases": {
+      "max_tokens": "max_completion_tokens"
+    }
+  },
+  "gpt-4o": {
+    "allowed_params": [
+      "model",
+      "temperature",
+      "max_completion_tokens",
+      "top_p",
+      "frequency_penalty",
+      "presence_penalty"
+    ],
+    "aliases": {
+      "max_tokens": "max_completion_tokens"
+    }
+  },
+  "gpt-4o-mini": {
+    "allowed_params": [
+      "model",
+      "temperature",
+      "max_completion_tokens",
+      "top_p",
+      "frequency_penalty",
+      "presence_penalty"
+    ],
+    "aliases": {
+      "max_tokens": "max_completion_tokens"
+    }
+  },
+  "o4-mini": {
+    "allowed_params": [
+      "model",
+      "temperature",
+      "max_completion_tokens",
+      "top_p",
+      "frequency_penalty",
+      "presence_penalty"
+    ],
+    "aliases": {
+      "max_tokens": "max_completion_tokens"
+    }
+  },
+  "gpt-5": {
+    "allowed_params": [
+      "model",
+      "temperature",
+      "max_completion_tokens",
+      "top_p",
+      "frequency_penalty",
+      "presence_penalty"
+    ],
+    "aliases": {
+      "max_tokens": "max_completion_tokens"
+    }
+  },
+  "gpt-5-mini": {
+    "allowed_params": [
+      "model",
+      "temperature",
+      "max_completion_tokens",
+      "top_p",
+      "frequency_penalty",
+      "presence_penalty"
+    ],
+    "aliases": {
+      "max_tokens": "max_completion_tokens"
+    }
+  },
+  "gpt-5-nano": {
+    "allowed_params": [
+      "model",
+      "temperature",
+      "max_completion_tokens",
+      "top_p",
+      "frequency_penalty",
+      "presence_penalty"
+    ],
+    "aliases": {
+      "max_tokens": "max_completion_tokens"
+    }
+  }
+}

@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import json
 import re
-from typing import Iterable
+from pathlib import Path
+from typing import Any, Iterable
 
 from openai import OpenAI
 from flask import current_app
@@ -16,6 +17,8 @@ from .settings_service import SettingsService
 # NOTE[agent]: Класс служит для общения с OpenAI с учётом настроек приложения.
 class OpenAIService:
     """Обеспечивает отправку сообщений в OpenAI Chat Completion API."""
+
+    _MODEL_PARAM_RULES: dict[str, dict[str, Any]] | None = None
 
     def __init__(self) -> None:
         """Инициализирует сервис и проверяет наличие API-ключа."""
@@ -40,7 +43,8 @@ class OpenAIService:
             current_app.logger.error(msg)
             raise RuntimeError(msg)
 
-        payload = {"messages": list(messages), **model_config}
+        sanitized_config = self._sanitize_model_config(model_config)
+        payload = {"messages": list(messages), **sanitized_config}
         current_app.logger.debug("Запрос к OpenAI: %s", json.dumps({"payload": payload}, ensure_ascii=False))
 
         try:
@@ -82,3 +86,67 @@ class OpenAIService:
         """Удаляет из ответа блоки вида <think>...</think>."""
 
         return re.sub(r"(?is)<think>.*?</think>", "", text or "").strip()
+
+    @classmethod
+    def _get_param_rules(cls) -> dict[str, dict[str, Any]]:
+        """Возвращает правила доступных параметров для моделей OpenAI."""
+
+        if cls._MODEL_PARAM_RULES is None:
+            config_path = Path(__file__).with_name("openai_model_params.json")
+            try:
+                with config_path.open("r", encoding="utf-8") as fp:
+                    cls._MODEL_PARAM_RULES = json.load(fp)
+            except FileNotFoundError as exc:  # pragma: no cover - защита от некорректной конфигурации
+                raise RuntimeError("Не найден файл конфигурации параметров моделей OpenAI") from exc
+        return cls._MODEL_PARAM_RULES
+
+    def _sanitize_model_config(self, model_config: dict[str, Any]) -> dict[str, Any]:
+        """Приводит конфигурацию модели к параметрам, поддерживаемым API."""
+
+        model_name = model_config.get("model")
+        if not model_name:
+            raise RuntimeError("Конфигурация модели не содержит ключ 'model'")
+
+        rules = self._resolve_rules_for_model(model_name)
+        allowed = set(rules.get("allowed_params", [])) or {"model"}
+        allowed.add("model")
+        aliases = rules.get("aliases", {})
+        sanitized: dict[str, Any] = {}
+        dropped: dict[str, str] = {}
+
+        for key, value in model_config.items():
+            target_key = aliases.get(key, key)
+            if target_key not in allowed:
+                dropped[key] = target_key
+                continue
+            if target_key in sanitized and target_key != key:
+                continue
+            sanitized[target_key] = value
+
+        if dropped:
+            current_app.logger.debug(
+                "Следующие параметры были исключены для модели %s: %s",
+                model_name,
+                dropped,
+            )
+        return sanitized
+
+    def _resolve_rules_for_model(self, model_name: str) -> dict[str, Any]:
+        """Подбирает правила параметров для указанной модели."""
+
+        rules_map = self._get_param_rules()
+        if model_name in rules_map:
+            return rules_map[model_name]
+
+        matched_rule: dict[str, Any] | None = None
+        matched_prefix_length = -1
+        for key, rules in rules_map.items():
+            if key == "default":
+                continue
+            if model_name.startswith(key) and len(key) > matched_prefix_length:
+                matched_rule = rules
+                matched_prefix_length = len(key)
+
+        if matched_rule is not None:
+            return matched_rule
+        return rules_map.get("default", {})
