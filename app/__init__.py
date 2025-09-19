@@ -147,6 +147,7 @@ def _ensure_default_model() -> None:
             model="gpt-3.5-turbo",      # если в схеме вместо `model` используется `provider_id`, замени соответствующим полем
             temperature=1.0,
             max_tokens=512,
+            system_instruction="Ты дружелюбный помощник.",
             is_default=True,
         )
         db.session.add(model)

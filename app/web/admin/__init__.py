@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
 
 from flask import Blueprint, Response, current_app, jsonify, redirect, render_template, request, url_for
@@ -10,6 +11,7 @@ from ...models import Dialog, MessageLog, ModelConfig, User, db
 from ...services.bot_service import TelegramBotManager
 from ...services.settings_service import SettingsService
 from ...services.statistics_service import StatisticsService
+from sqlalchemy import func
 
 admin_bp = Blueprint("admin", __name__, url_prefix="/admin", template_folder="../templates")
 
@@ -20,39 +22,58 @@ def dashboard() -> str:
     """Отображает сводную статистику и основные настройки."""
 
     period = int(request.args.get("days", 7) or 7)
-    stats = StatisticsService().gather(days=period)
+    start_raw = request.args.get("start")
+    end_raw = request.args.get("end")
+    start_date: datetime | None = None
+    end_date: datetime | None = None
+    if start_raw and end_raw:
+        try:
+            start_date = datetime.strptime(start_raw, "%Y-%m-%d")
+            end_date = datetime.strptime(end_raw, "%Y-%m-%d")
+            if end_date < start_date:
+                start_date, end_date = end_date, start_date
+        except ValueError:
+            start_date = None
+            end_date = None
+    stats = StatisticsService().gather(days=period, start=start_date, end=end_date)
+    selected_period_days = period
+    if start_date and end_date:
+        selected_period_days = (end_date - start_date).days + 1
     settings = SettingsService().all_settings()
     bot_manager: TelegramBotManager | None = current_app.extensions.get("bot_manager")  # type: ignore[assignment]
     is_bot_running = bot_manager.is_running() if bot_manager else False
     models = ModelConfig.query.order_by(ModelConfig.created_at.desc()).all()
+    active_model = None
+    active_model_id = settings.get("active_model_id", "")
+    for model in models:
+        if active_model_id and str(model.id) == active_model_id:
+            active_model = model
+            break
+    if active_model is None:
+        active_model = next((model for model in models if model.is_default), None)
+    start_value = start_date.strftime("%Y-%m-%d") if start_date else ""
+    end_value = end_date.strftime("%Y-%m-%d") if end_date else ""
     return render_template(
         "admin/dashboard.html",
         stats=stats,
         period=period,
+        start_date=start_date,
+        end_date=end_date,
+        selected_period_days=selected_period_days,
         settings=settings,
         is_bot_running=is_bot_running,
         models=models,
+        active_model=active_model,
+        start_value=start_value,
+        end_value=end_value,
     )
 
 
-# NOTE[agent]: Страница управления пользователями позволяет изменять активность и создавать записи.
-@admin_bp.route("/users", methods=["GET", "POST"])
+# NOTE[agent]: Страница управления пользователями позволяет изменять активность.
+@admin_bp.route("/users", methods=["GET"])
 def manage_users() -> Response | str:
-    """Отображает список пользователей и обрабатывает форму добавления."""
+    """Отображает список пользователей."""
 
-    if request.method == "POST":
-        telegram_id = request.form.get("telegram_id", "").strip()
-        username = request.form.get("username", "").strip() or None
-        full_name = request.form.get("full_name", "").strip() or None
-        if telegram_id:
-            existing = User.query.filter_by(telegram_id=telegram_id).first()
-            if existing:
-                existing.username = username or existing.username
-                existing.full_name = full_name or existing.full_name
-            else:
-                user = User(telegram_id=telegram_id, username=username, full_name=full_name)
-                db.session.add(user)
-            db.session.commit()
     users = User.query.order_by(User.created_at.desc()).all()
     return render_template("admin/users.html", users=users)
 
@@ -74,12 +95,72 @@ def logs() -> str:
     """Показывает последние сообщения пользователей и ответы LLM."""
 
     limit = int(request.args.get("limit", 50) or 50)
+    dialog_limit = int(request.args.get("dialog_limit", 50) or 50)
+    message_stats = (
+        db.session.query(
+            MessageLog.dialog_id.label("dialog_id"),
+            func.count(MessageLog.id).label("message_count"),
+            func.coalesce(func.sum(MessageLog.tokens_used), 0).label("tokens_spent"),
+        )
+        .group_by(MessageLog.dialog_id)
+        .subquery()
+    )
+    first_message_subquery = (
+        db.session.query(MessageLog.user_message)
+        .filter(MessageLog.dialog_id == Dialog.id)
+        .order_by(MessageLog.message_index.asc())
+        .limit(1)
+        .correlate(Dialog)
+        .scalar_subquery()
+    )
+    dialog_rows = (
+        db.session.query(
+            Dialog.id.label("dialog_id"),
+            Dialog.is_active,
+            User.username,
+            User.telegram_id,
+            func.coalesce(message_stats.c.message_count, 0).label("message_count"),
+            func.coalesce(message_stats.c.tokens_spent, 0).label("tokens_spent"),
+            first_message_subquery.label("first_message"),
+        )
+        .join(User, Dialog.user_id == User.id)
+        .outerjoin(message_stats, message_stats.c.dialog_id == Dialog.id)
+        .order_by(Dialog.started_at.desc())
+        .limit(dialog_limit)
+        .all()
+    )
+    dialog_logs: list[dict[str, Any]] = []
+    for row in dialog_rows:
+        base_title = row.first_message or ""
+        title = base_title[:15]
+        if base_title and len(base_title) > 15:
+            title = f"{title}…"
+        if not title:
+            title = f"Диалог #{row.dialog_id}"
+        login = row.username or row.telegram_id or "—"
+        dialog_logs.append(
+            {
+                "id": row.dialog_id,
+                "title": title,
+                "full_title": base_title,
+                "message_count": int(row.message_count or 0),
+                "tokens_spent": int(row.tokens_spent or 0),
+                "username": login,
+                "is_active": row.is_active,
+            }
+        )
     records = (
         MessageLog.query.order_by(MessageLog.created_at.desc())
         .limit(limit)
         .all()
     )
-    return render_template("admin/logs.html", records=records, limit=limit)
+    return render_template(
+        "admin/logs.html",
+        records=records,
+        limit=limit,
+        dialog_logs=dialog_logs,
+        dialog_limit=dialog_limit,
+    )
 
 
 # NOTE[agent]: Управление конфигурациями моделей и выбор активной.
@@ -89,24 +170,26 @@ def manage_models() -> Response | str:
 
     settings_service = SettingsService()
     if request.method == "POST":
+        action = request.form.get("action", "create")
         name = request.form.get("name", "").strip()
         model_name = request.form.get("model", "").strip()
+        instruction = request.form.get("system_instruction", "").strip() or None
 
         # NOTE[agent]: Вспомогательная функция безопасно преобразует значение в float.
-        def _float(name: str, default: float) -> float:
+        def _float(field: str, default: float) -> float:
             """Возвращает значение поля как float или значение по умолчанию."""
 
-            value = request.form.get(name, "")
+            value = request.form.get(field, "")
             try:
                 return float(value)
             except (TypeError, ValueError):
                 return default
 
         # NOTE[agent]: Вспомогательная функция безопасно преобразует значение в int.
-        def _int(name: str, default: int) -> int:
+        def _int(field: str, default: int) -> int:
             """Возвращает значение поля как int или значение по умолчанию."""
 
-            value = request.form.get(name, "")
+            value = request.form.get(field, "")
             try:
                 return int(value)
             except (TypeError, ValueError):
@@ -115,26 +198,52 @@ def manage_models() -> Response | str:
         temperature = _float("temperature", 1.0)
         max_tokens = _int("max_tokens", 512)
         top_p = _float("top_p", 1.0)
-        frequency_penalty = _float("frequency_penalty", 0.0)
-        presence_penalty = _float("presence_penalty", 0.0)
         is_default = request.form.get("is_default") == "on"
-        if name and model_name:
+
+        if action == "create" and name and model_name:
+            if is_default:
+                ModelConfig.query.update({ModelConfig.is_default: False})
             model = ModelConfig(
                 name=name,
                 model=model_name,
                 temperature=temperature,
                 max_tokens=max_tokens,
                 top_p=top_p,
-                frequency_penalty=frequency_penalty,
-                presence_penalty=presence_penalty,
+                system_instruction=instruction,
                 is_default=is_default,
             )
-            if is_default:
-                ModelConfig.query.update({ModelConfig.is_default: False})
             db.session.add(model)
             db.session.commit()
             if is_default:
                 settings_service.set("active_model_id", str(model.id))
+        elif action == "update":
+            model_id_raw = request.form.get("model_id")
+            model_obj: ModelConfig | None = None
+            try:
+                model_id = int(model_id_raw) if model_id_raw else None
+            except (TypeError, ValueError):
+                model_id = None
+            if model_id is not None:
+                model_obj = ModelConfig.query.get(model_id)
+            if model_obj:
+                model_obj.name = name or model_obj.name
+                model_obj.model = model_name or model_obj.model
+                model_obj.temperature = temperature
+                model_obj.max_tokens = max_tokens
+                model_obj.top_p = top_p
+                model_obj.system_instruction = instruction
+                if is_default:
+                    ModelConfig.query.update({ModelConfig.is_default: False})
+                    model_obj.is_default = True
+                else:
+                    model_obj.is_default = False
+                db.session.commit()
+                if is_default:
+                    settings_service.set("active_model_id", str(model_obj.id))
+                else:
+                    current_active = settings_service.get("active_model_id")
+                    if current_active and current_active == str(model_obj.id):
+                        settings_service.set("active_model_id", "")
     models = ModelConfig.query.order_by(ModelConfig.created_at.desc()).all()
     active_model_id = settings_service.get("active_model_id")
     return render_template("admin/models.html", models=models, active_model_id=active_model_id)

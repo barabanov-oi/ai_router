@@ -2,7 +2,25 @@
 {% block title %}Дашборд — AI Router{% endblock %}
 {% block content %}
 <h2>Дашборд</h2>
+<form class="filters" method="get">
+  <div class="form-row">
+    <label>Начало периода
+      <input type="date" name="start" value="{{ start_value }}">
+    </label>
+    <label>Конец периода
+      <input type="date" name="end" value="{{ end_value }}">
+    </label>
+    <label>Количество дней
+      <input type="number" name="days" min="1" value="{{ period }}">
+    </label>
+    <button class="btn" type="submit">Обновить</button>
+  </div>
+</form>
+{% if start_date and end_date %}
+<p>Статистика за период с {{ start_date.strftime('%d.%m.%Y') }} по {{ end_date.strftime('%d.%m.%Y') }} ({{ selected_period_days }} дн.).</p>
+{% else %}
 <p>Статистика за {{ period }} дней.</p>
+{% endif %}
 <div class="stats">
   <div class="stat-card"><strong>{{ stats.total_users }}</strong>Пользователи</div>
   <div class="stat-card"><strong>{{ stats.active_users }}</strong>Активные пользователи</div>
@@ -22,12 +40,14 @@
   <button class="btn danger" type="submit">Остановить бота</button>
 </form>
 <h3>Активная модель</h3>
-{% set active_id = settings.get('active_model_id', '') %}
-<ul>
-  {% for model in models %}
-  <li>{% if active_id == model.id|string %}<strong>{{ model.name }}</strong>{% else %}{{ model.name }}{% endif %} — {{ model.model }}</li>
-  {% endfor %}
-</ul>
+{% if active_model %}
+<div class="active-model-badge" title="{{ active_model.model }}">
+  <span class="badge-name">{{ active_model.name }}</span>
+  <span class="badge-subtitle">{{ active_model.model }}</span>
+</div>
+{% else %}
+<p>Активная модель не выбрана.</p>
+{% endif %}
 <script>
 async function sendApi(event) {
   event.preventDefault();

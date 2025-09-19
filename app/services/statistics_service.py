@@ -17,25 +17,40 @@ class StatisticsService:
         """Конструктор не содержит логики, добавлен для единообразия."""
 
     # NOTE[agent]: Метод считает ключевые метрики за указанный период.
-    def gather(self, days: int = 7) -> dict[str, int]:
+    def gather(
+        self,
+        days: int = 7,
+        start: datetime | None = None,
+        end: datetime | None = None,
+    ) -> dict[str, int]:
         """Вычисляет статистику за выбранный период.
 
         Args:
-            days: Количество дней для анализа.
+            days: Количество дней для анализа, если явно не задан период.
+            start: Дата и время начала периода.
+            end: Дата и время окончания периода.
 
         Returns:
             Словарь метрик: количество запросов, пользователей, токенов.
         """
 
-        since = datetime.utcnow() - timedelta(days=days)
+        end_at = end or datetime.utcnow()
+        start_at = start or (end_at - timedelta(days=days))
+        if start_at > end_at:
+            start_at, end_at = end_at, start_at
+        if start and end:
+            end_at = end_at + timedelta(days=1) - timedelta(microseconds=1)
+
         total_users = User.query.count()
         active_users = (
-            User.query.filter(User.last_active_at >= since).count()
+            User.query.filter(User.last_active_at.between(start_at, end_at)).count()
         )
-        query_count = MessageLog.query.filter(MessageLog.created_at >= since).count()
+        query_count = (
+            MessageLog.query.filter(MessageLog.created_at.between(start_at, end_at)).count()
+        )
         tokens_spent = (
             db.session.query(func.sum(MessageLog.tokens_used))
-            .filter(MessageLog.created_at >= since)
+            .filter(MessageLog.created_at.between(start_at, end_at))
             .scalar()
             or 0
         )

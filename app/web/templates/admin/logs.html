@@ -1,13 +1,54 @@
 {% extends 'admin/base.html' %}
 {% block title %}Логи — AI Router{% endblock %}
 {% block content %}
-<h2>Логи сообщений</h2>
-<form method="get">
-  <label>Количество записей
-    <input type="number" name="limit" value="{{ limit }}">
-  </label>
-  <button class="btn" type="submit">Показать</button>
+<h2>Логи диалогов</h2>
+<form class="filters" method="get">
+  <div class="form-row">
+    <label>Диалоги
+      <input type="number" name="dialog_limit" min="1" value="{{ dialog_limit }}">
+    </label>
+    <label>Сообщения
+      <input type="number" name="limit" min="1" value="{{ limit }}">
+    </label>
+    <button class="btn" type="submit">Показать</button>
+  </div>
 </form>
+<table>
+  <thead>
+    <tr>
+      <th>ID</th>
+      <th>Название</th>
+      <th>Сообщений</th>
+      <th>Пользователь</th>
+      <th>Расход токенов</th>
+      <th>Статус</th>
+      <th>Действия</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for dialog in dialog_logs %}
+    <tr>
+      <td>{{ dialog.id }}</td>
+      <td><span class="dialog-title" title="{{ dialog.full_title or 'Нет данных' }}">{{ dialog.title }}</span></td>
+      <td>{{ dialog.message_count }}</td>
+      <td>{{ dialog.username }}</td>
+      <td>{{ dialog.tokens_spent }}</td>
+      <td>{% if dialog.is_active %}Открыт{% else %}Закрыт{% endif %}</td>
+      <td>
+        {% if dialog.is_active %}
+        <form class="inline" method="post" action="{{ url_for('admin.close_dialog', dialog_id=dialog.id) }}">
+          <button class="btn secondary" type="submit">Закрыть</button>
+        </form>
+        {% else %}
+        —
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<h2>Логи сообщений</h2>
 <table>
   <thead>
     <tr>
@@ -17,8 +58,8 @@
       <th>Сообщение</th>
       <th>Ответ</th>
       <th>Токены</th>
-      <th>Время</th>
-      <th>Действия</th>
+      <th>Время запроса</th>
+      <th>Время ответа</th>
     </tr>
   </thead>
   <tbody>
@@ -31,11 +72,7 @@
       <td>{{ record.llm_response or '—' }}</td>
       <td>{{ record.tokens_used }}</td>
       <td>{{ record.created_at }}</td>
-      <td>
-        <form class="inline" method="post" action="{{ url_for('admin.close_dialog', dialog_id=record.dialog_id) }}">
-          <button class="btn secondary" type="submit">Закрыть диалог</button>
-        </form>
-      </td>
+      <td>{{ record.responded_at or '—' }}</td>
     </tr>
     {% endfor %}
   </tbody>
