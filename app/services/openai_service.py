@@ -14,9 +14,9 @@ from .settings_service import SettingsService
 
 # NOTE[agent]: Класс служит для общения с OpenAI с учётом настроек приложения.
 class OpenAIService:
-    """Обеспечивает отправку сообщений в OpenAI Chat Completion API."""
+    """Обеспечивает отправку сообщений в OpenAI Responses API."""
 
-    CHAT_URL = "https://api.openai.com/v1/chat/completions"
+    RESPONSES_URL = "https://api.openai.com/v1/responses"
 
     def __init__(self) -> None:
         """Инициализирует сервис и проверяет наличие API-ключа."""
@@ -25,7 +25,7 @@ class OpenAIService:
 
     # NOTE[agent]: Метод подготавливает сообщения и выполняет HTTP-запрос.
     def send_chat_request(self, messages: Iterable[dict[str, str]], model_config: dict) -> dict:
-        """Отправляет запрос в OpenAI Chat Completion API.
+        """Отправляет запрос в OpenAI Responses API.
 
         Args:
             messages: Последовательность сообщений в формате OpenAI.
@@ -41,15 +41,14 @@ class OpenAIService:
             current_app.logger.error(msg)
             raise RuntimeError(msg)
 
-        payload = {
-            "messages": list(messages),
-        }
-        payload.update(model_config)
+        formatted_messages = self._prepare_input_messages(messages)
+        payload = {"input": formatted_messages}
+        payload.update(self._adapt_model_config(model_config))
         current_app.logger.debug("Запрос к OpenAI: %s", json.dumps({"payload": payload}, ensure_ascii=False))
 
         try:
             response = requests.post(
-                self.CHAT_URL,
+                self.RESPONSES_URL,
                 headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
                 json=payload,
                 timeout=60,
@@ -74,13 +73,84 @@ class OpenAIService:
             Текст ответа модели.
         """
 
-        choices = data.get("choices", [])
-        if not choices:
-            current_app.logger.error("Ответ OpenAI не содержит вариантов")
-            raise RuntimeError("Ответ OpenAI не содержит вариантов")
-        message = choices[0]["message"]["content"]
+        message = self._extract_text_from_output(data.get("output", []))
+        if not message:
+            current_app.logger.error("Ответ OpenAI не содержит текстового сообщения")
+            raise RuntimeError("Ответ OpenAI не содержит текстового сообщения")
         usage = data.get("usage", {})
         tokens_used = int(usage.get("total_tokens", usage.get("completion_tokens", 0)))
         log_entry.register_response(message, tokens_used)
         db.session.commit()
         return message
+
+    def _prepare_input_messages(self, messages: Iterable[dict[str, str]]) -> list[dict]:
+        """Преобразует сообщения к формату Responses API.
+
+        Args:
+            messages: Последовательность сообщений в старом формате Chat API.
+
+        Returns:
+            Сообщения, подготовленные для передачи в Responses API.
+        """
+
+        prepared: list[dict] = []
+        for message in messages:
+            role = message.get("role", "user")
+            content = message.get("content", "")
+            if not isinstance(content, str):
+                content = str(content)
+            prepared.append(
+                {
+                    "role": role,
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": content,
+                        }
+                    ],
+                }
+            )
+        return prepared
+
+    def _adapt_model_config(self, config: dict) -> dict:
+        """Переименовывает параметры модели под требования Responses API.
+
+        Args:
+            config: Оригинальные параметры модели.
+
+        Returns:
+            Обновлённый словарь параметров для запроса.
+        """
+
+        adapted: dict = {}
+        for key, value in config.items():
+            if value is None:
+                continue
+            if key == "max_tokens":
+                adapted["max_output_tokens"] = value
+                continue
+            adapted[key] = value
+        return adapted
+
+    def _extract_text_from_output(self, output: Iterable[dict]) -> str:
+        """Извлекает текстовый ответ из структуры Responses API.
+
+        Args:
+            output: Список элементов ответа Responses API.
+
+        Returns:
+            Собранный текст ответа модели.
+        """
+
+        parts: list[str] = []
+        for item in output:
+            if not isinstance(item, dict) or item.get("type") != "message":
+                continue
+            for piece in item.get("content", []):
+                if not isinstance(piece, dict):
+                    continue
+                if piece.get("type") in {"output_text", "text"}:
+                    text = piece.get("text")
+                    if text:
+                        parts.append(text)
+        return "".join(parts).strip()
