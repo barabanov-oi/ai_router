@@ -19,6 +19,7 @@ class ModelConfig(db.Model):
     top_p = db.Column(db.Float, default=1.0, nullable=False)
     frequency_penalty = db.Column(db.Float, default=0.0, nullable=False)
     presence_penalty = db.Column(db.Float, default=0.0, nullable=False)
+    instruction = db.Column(db.Text, nullable=True)
     is_default = db.Column(db.Boolean, default=False, nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 

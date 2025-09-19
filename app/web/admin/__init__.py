@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
-from typing import Any
+from datetime import datetime, time
+from typing import Any, Mapping
 
-from flask import Blueprint, Response, current_app, jsonify, redirect, render_template, request, url_for
+from flask import Blueprint, Response, abort, current_app, jsonify, redirect, render_template, request, url_for
+from sqlalchemy.orm import joinedload, subqueryload
 
 from ...models import Dialog, MessageLog, ModelConfig, User, db
 from ...services.bot_service import TelegramBotManager
@@ -20,39 +22,35 @@ def dashboard() -> str:
     """Отображает сводную статистику и основные настройки."""
 
     period = int(request.args.get("days", 7) or 7)
-    stats = StatisticsService().gather(days=period)
+    start_date_str = request.args.get("start_date", "")
+    end_date_str = request.args.get("end_date", "")
+    start_date = _parse_date(start_date_str, end_of_day=False)
+    end_date = _parse_date(end_date_str, end_of_day=True)
+    stats = StatisticsService().gather(days=period, start=start_date, end=end_date)
     settings = SettingsService().all_settings()
     bot_manager: TelegramBotManager | None = current_app.extensions.get("bot_manager")  # type: ignore[assignment]
     is_bot_running = bot_manager.is_running() if bot_manager else False
     models = ModelConfig.query.order_by(ModelConfig.created_at.desc()).all()
+    active_model = _resolve_active_model(models, settings.get("active_model_id"))
     return render_template(
         "admin/dashboard.html",
         stats=stats,
         period=period,
+        period_days=period,
+        start_date=start_date_str,
+        end_date=end_date_str,
         settings=settings,
         is_bot_running=is_bot_running,
         models=models,
+        active_model=active_model,
     )
 
 
-# NOTE[agent]: Страница управления пользователями позволяет изменять активность и создавать записи.
-@admin_bp.route("/users", methods=["GET", "POST"])
-def manage_users() -> Response | str:
-    """Отображает список пользователей и обрабатывает форму добавления."""
+# NOTE[agent]: Страница управления пользователями отображает текущее состояние аккаунтов.
+@admin_bp.route("/users")
+def manage_users() -> str:
+    """Отображает список пользователей."""
 
-    if request.method == "POST":
-        telegram_id = request.form.get("telegram_id", "").strip()
-        username = request.form.get("username", "").strip() or None
-        full_name = request.form.get("full_name", "").strip() or None
-        if telegram_id:
-            existing = User.query.filter_by(telegram_id=telegram_id).first()
-            if existing:
-                existing.username = username or existing.username
-                existing.full_name = full_name or existing.full_name
-            else:
-                user = User(telegram_id=telegram_id, username=username, full_name=full_name)
-                db.session.add(user)
-            db.session.commit()
     users = User.query.order_by(User.created_at.desc()).all()
     return render_template("admin/users.html", users=users)
 
@@ -74,12 +72,26 @@ def logs() -> str:
     """Показывает последние сообщения пользователей и ответы LLM."""
 
     limit = int(request.args.get("limit", 50) or 50)
+    dialog_limit = int(request.args.get("dialog_limit", 20) or 20)
     records = (
         MessageLog.query.order_by(MessageLog.created_at.desc())
         .limit(limit)
         .all()
     )
-    return render_template("admin/logs.html", records=records, limit=limit)
+    dialogs = (
+        Dialog.query.options(joinedload(Dialog.user), subqueryload(Dialog.messages))
+        .order_by(Dialog.started_at.desc())
+        .limit(dialog_limit)
+        .all()
+    )
+    dialog_logs = [_summarize_dialog(dialog) for dialog in dialogs]
+    return render_template(
+        "admin/logs.html",
+        records=records,
+        limit=limit,
+        dialog_limit=dialog_limit,
+        dialog_logs=dialog_logs,
+    )
 
 
 # NOTE[agent]: Управление конфигурациями моделей и выбор активной.
@@ -89,52 +101,11 @@ def manage_models() -> Response | str:
 
     settings_service = SettingsService()
     if request.method == "POST":
-        name = request.form.get("name", "").strip()
-        model_name = request.form.get("model", "").strip()
-
-        # NOTE[agent]: Вспомогательная функция безопасно преобразует значение в float.
-        def _float(name: str, default: float) -> float:
-            """Возвращает значение поля как float или значение по умолчанию."""
-
-            value = request.form.get(name, "")
-            try:
-                return float(value)
-            except (TypeError, ValueError):
-                return default
-
-        # NOTE[agent]: Вспомогательная функция безопасно преобразует значение в int.
-        def _int(name: str, default: int) -> int:
-            """Возвращает значение поля как int или значение по умолчанию."""
-
-            value = request.form.get(name, "")
-            try:
-                return int(value)
-            except (TypeError, ValueError):
-                return default
-
-        temperature = _float("temperature", 1.0)
-        max_tokens = _int("max_tokens", 512)
-        top_p = _float("top_p", 1.0)
-        frequency_penalty = _float("frequency_penalty", 0.0)
-        presence_penalty = _float("presence_penalty", 0.0)
-        is_default = request.form.get("is_default") == "on"
-        if name and model_name:
-            model = ModelConfig(
-                name=name,
-                model=model_name,
-                temperature=temperature,
-                max_tokens=max_tokens,
-                top_p=top_p,
-                frequency_penalty=frequency_penalty,
-                presence_penalty=presence_penalty,
-                is_default=is_default,
-            )
-            if is_default:
-                ModelConfig.query.update({ModelConfig.is_default: False})
-            db.session.add(model)
-            db.session.commit()
-            if is_default:
-                settings_service.set("active_model_id", str(model.id))
+        action = request.form.get("action", "create")
+        if action == "update":
+            _update_model(request.form, settings_service)
+        else:
+            _create_model(request.form, settings_service)
     models = ModelConfig.query.order_by(ModelConfig.created_at.desc()).all()
     active_model_id = settings_service.get("active_model_id")
     return render_template("admin/models.html", models=models, active_model_id=active_model_id)
@@ -239,3 +210,139 @@ def close_dialog(dialog_id: int) -> Response:
     dialog.close()
     db.session.commit()
     return redirect(url_for("admin.logs"))
+
+
+def _parse_date(value: str | None, *, end_of_day: bool) -> datetime | None:
+    """Преобразует значение из формы в объект datetime."""
+
+    if not value:
+        return None
+    try:
+        parsed = datetime.strptime(value, "%Y-%m-%d")
+    except ValueError:
+        return None
+    moment = time.max if end_of_day else time.min
+    return datetime.combine(parsed.date(), moment)
+
+
+def _resolve_active_model(models: list[ModelConfig], stored_id: str | None) -> ModelConfig | None:
+    """Определяет активную модель исходя из настроек и флагов."""
+
+    target_id: int | None = None
+    if stored_id:
+        try:
+            target_id = int(stored_id)
+        except (TypeError, ValueError):
+            target_id = None
+    if target_id is not None:
+        for model in models:
+            if model.id == target_id:
+                return model
+    for model in models:
+        if model.is_default:
+            return model
+    return models[0] if models else None
+
+
+def _summarize_dialog(dialog: Dialog) -> dict[str, Any]:
+    """Готовит словарь с агрегированной информацией о диалоге."""
+
+    messages = sorted(dialog.messages, key=lambda message: message.message_index)
+    first_message = messages[0].user_message if messages else ""
+    title = first_message[:15] if first_message else "—"
+    tokens_spent = sum(message.tokens_used or 0 for message in messages)
+    user = dialog.user
+    username = (user.username or user.telegram_id) if user else "—"
+    return {
+        "id": dialog.id,
+        "title": title,
+        "message_count": len(messages),
+        "username": username,
+        "tokens_spent": tokens_spent,
+    }
+
+
+def _get_form_float(form: Mapping[str, str | None], field: str, default: float) -> float:
+    """Извлекает вещественное значение из формы."""
+
+    value = form.get(field)
+    if value in (None, ""):
+        return default
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _get_form_int(form: Mapping[str, str | None], field: str, default: int) -> int:
+    """Извлекает целочисленное значение из формы."""
+
+    value = form.get(field)
+    if value in (None, ""):
+        return default
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _create_model(form: Mapping[str, str | None], settings_service: SettingsService) -> None:
+    """Создаёт новую конфигурацию модели на основе формы."""
+
+    name = (form.get("name") or "").strip()
+    model_name = (form.get("model") or "").strip()
+    if not name or not model_name:
+        return
+    temperature = _get_form_float(form, "temperature", 1.0)
+    max_tokens = _get_form_int(form, "max_tokens", 512)
+    top_p = _get_form_float(form, "top_p", 1.0)
+    instruction = (form.get("instruction") or "").strip() or None
+    is_default = form.get("is_default") == "on"
+    if is_default:
+        ModelConfig.query.update({ModelConfig.is_default: False})
+    model = ModelConfig(
+        name=name,
+        model=model_name,
+        temperature=temperature,
+        max_tokens=max_tokens,
+        top_p=top_p,
+        instruction=instruction,
+        is_default=is_default,
+    )
+    db.session.add(model)
+    db.session.commit()
+    if is_default:
+        settings_service.set("active_model_id", str(model.id))
+
+
+def _update_model(form: Mapping[str, str | None], settings_service: SettingsService) -> None:
+    """Обновляет существующую конфигурацию модели."""
+
+    raw_id = form.get("model_id")
+    if not raw_id:
+        abort(400, "Не указан идентификатор модели")
+    try:
+        model_id = int(raw_id)
+    except (TypeError, ValueError) as exc:
+        raise abort(400, "Некорректный идентификатор модели") from exc
+    model = ModelConfig.query.get(model_id)
+    if not model:
+        abort(404, "Модель не найдена")
+    name = (form.get("name") or "").strip()
+    model_name = (form.get("model") or "").strip()
+    if name:
+        model.name = name
+    if model_name:
+        model.model = model_name
+    model.temperature = _get_form_float(form, "temperature", model.temperature)
+    model.max_tokens = _get_form_int(form, "max_tokens", model.max_tokens)
+    model.top_p = _get_form_float(form, "top_p", model.top_p)
+    instruction = (form.get("instruction") or "").strip()
+    model.instruction = instruction or None
+    is_default = form.get("is_default") == "on"
+    if is_default:
+        ModelConfig.query.update({ModelConfig.is_default: False})
+    model.is_default = is_default
+    db.session.commit()
+    if is_default:
+        settings_service.set("active_model_id", str(model.id))

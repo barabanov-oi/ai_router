@@ -299,11 +299,25 @@ class TelegramBotManager:
                 self._bot.send_message(chat_id=message.chat.id, text=f"Произошла ошибка: {exc}")
 
     # NOTE[agent]: Формирует контекст диалога для передачи в OpenAI.
-    def _build_openai_messages(self, dialog: Dialog, new_message: MessageLog) -> Iterable[dict[str, str]]:
+    def _build_openai_messages(
+        self,
+        dialog: Dialog,
+        new_message: MessageLog,
+        instruction: str | None,
+        mode_definition: dict,
+    ) -> Iterable[dict[str, str]]:
         """Создаёт список сообщений для OpenAI API."""
 
-        mode = MODE_DEFINITIONS.get(new_message.mode, MODE_DEFINITIONS["default"])
-        system_prompt = mode.get("system", MODE_DEFINITIONS["default"]["system"])
+        default_mode = MODE_DEFINITIONS["default"]
+        system_parts: list[str] = []
+        if instruction:
+            system_parts.append(instruction.strip())
+        mode_prompt = mode_definition.get("system") or default_mode["system"]
+        if mode_prompt:
+            system_parts.append(str(mode_prompt).strip())
+        system_prompt = "\n\n".join(part for part in system_parts if part)
+        if not system_prompt:
+            system_prompt = default_mode["system"]
         yield {"role": "system", "content": system_prompt}
 
         logs = (
@@ -321,8 +335,8 @@ class TelegramBotManager:
         """Отправляет контекст в OpenAI и возвращает ответ."""
 
         mode = MODE_DEFINITIONS.get(log_entry.mode, MODE_DEFINITIONS["default"])
-        model_config = self._get_model_config(mode)
-        messages = list(self._build_openai_messages(dialog, log_entry))
+        model_config, instruction = self._get_model_config(mode)
+        messages = list(self._build_openai_messages(dialog, log_entry, instruction, mode))
         data = self._openai.send_chat_request(messages=messages, model_config=model_config)
         return self._openai.extract_message(data, log_entry)
 
@@ -363,7 +377,7 @@ class TelegramBotManager:
         return Dialog.query.filter_by(user_id=user.id, is_active=True).order_by(Dialog.started_at.desc()).first()
 
     # NOTE[agent]: Комбинация настроек модели с параметрами режима.
-    def _get_model_config(self, mode_definition: dict) -> dict:
+    def _get_model_config(self, mode_definition: dict) -> tuple[dict, str | None]:
         """Формирует конфигурацию запроса к OpenAI."""
 
         settings_model_id = self._settings.get("active_model_id")
@@ -387,7 +401,10 @@ class TelegramBotManager:
             customized["temperature"] = mode_definition["temperature"]
         if "max_tokens" in mode_definition:
             customized["max_tokens"] = mode_definition["max_tokens"]
-        return customized
+        if "top_p" in mode_definition:
+            customized["top_p"] = mode_definition["top_p"]
+        instruction = (model.instruction or "").strip() if model and model.instruction else None
+        return customized, instruction
 
     def _get_logger(self) -> Logger:
         """Возвращает логгер, доступный в текущем или сохранённом контексте."""

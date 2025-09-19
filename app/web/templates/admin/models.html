@@ -3,6 +3,7 @@
 {% block content %}
 <h2>Модели</h2>
 <form method="post">
+  <input type="hidden" name="action" value="create">
   <h3>Новая конфигурация</h3>
   <label>Название
     <input type="text" name="name" required>
@@ -19,11 +20,8 @@
   <label>Top P
     <input type="number" step="0.1" name="top_p" value="1.0">
   </label>
-  <label>Frequency penalty
-    <input type="number" step="0.1" name="frequency_penalty" value="0.0">
-  </label>
-  <label>Presence penalty
-    <input type="number" step="0.1" name="presence_penalty" value="0.0">
+  <label>Инструкция
+    <textarea name="instruction" placeholder="Опишите поведение модели (необязательно)"></textarea>
   </label>
   <label>
     <input type="checkbox" name="is_default"> Сделать модель активной
@@ -39,7 +37,9 @@
       <th>Модель</th>
       <th>Temperature</th>
       <th>Max tokens</th>
+      <th>Top P</th>
       <th>Активная</th>
+      <th>Инструкция</th>
     </tr>
   </thead>
   <tbody>
@@ -50,9 +50,43 @@
       <td>{{ model.model }}</td>
       <td>{{ model.temperature }}</td>
       <td>{{ model.max_tokens }}</td>
+      <td>{{ model.top_p }}</td>
       <td>{% if active_model_id == model.id|string %}Да{% elif model.is_default %}Да{% else %}Нет{% endif %}</td>
+      <td>{{ model.instruction|default('—')|truncate(80, True) }}</td>
     </tr>
     {% endfor %}
   </tbody>
 </table>
+<h3>Редактирование моделей</h3>
+{% for model in models %}
+<details>
+  <summary>{{ model.name }} — {{ model.model }}</summary>
+  <form method="post" class="model-edit-form">
+    <input type="hidden" name="action" value="update">
+    <input type="hidden" name="model_id" value="{{ model.id }}">
+    <label>Название
+      <input type="text" name="name" value="{{ model.name }}" required>
+    </label>
+    <label>Идентификатор модели
+      <input type="text" name="model" value="{{ model.model }}" required>
+    </label>
+    <label>Temperature
+      <input type="number" step="0.1" name="temperature" value="{{ model.temperature }}">
+    </label>
+    <label>Max tokens
+      <input type="number" name="max_tokens" value="{{ model.max_tokens }}">
+    </label>
+    <label>Top P
+      <input type="number" step="0.1" name="top_p" value="{{ model.top_p }}">
+    </label>
+    <label>Инструкция
+      <textarea name="instruction">{{ model.instruction or '' }}</textarea>
+    </label>
+    <label>
+      <input type="checkbox" name="is_default" {% if active_model_id == model.id|string %}checked{% endif %}> Сделать модель активной
+    </label>
+    <button class="btn" type="submit">Сохранить</button>
+  </form>
+</details>
+{% endfor %}
 {% endblock %}
