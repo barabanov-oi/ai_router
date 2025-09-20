@@ -127,12 +127,7 @@
   },
   "gpt-5-nano": {
     "allowed_params": [
-      "model",
-      "temperature",
-      "max_completion_tokens",
-      "top_p",
-      "frequency_penalty",
-      "presence_penalty"
+      "model"
     ],
     "aliases": {
       "max_tokens": "max_completion_tokens"
