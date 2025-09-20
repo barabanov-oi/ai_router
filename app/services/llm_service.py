@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Iterable
+from typing import Any, Dict, Iterable, Tuple, Type
 
 from flask import current_app
 
@@ -17,7 +17,7 @@ from .providers.openai_provider import OpenAIProviderClient
 class LLMService:
     """Управляет взаимодействием с поставщиками LLM."""
 
-    _CLIENT_CLASSES: dict[str, type[BaseProviderClient]] = {
+    _CLIENT_CLASSES: Dict[str, Type[BaseProviderClient]] = {
         LLMProvider.VENDOR_OPENAI: OpenAIProviderClient,
         LLMProvider.VENDOR_GOOGLE: GoogleProviderClient,
         LLMProvider.VENDOR_GROQ: GroqProviderClient,
@@ -26,15 +26,15 @@ class LLMService:
     def __init__(self) -> None:
         """Инициализирует кэш клиентов провайдеров."""
 
-        self._clients: dict[int, tuple[str, BaseProviderClient]] = {}
+        self._clients: Dict[int, Tuple[str, BaseProviderClient]] = {}
 
     # NOTE[agent]: Метод подбирает клиента и выполняет чат-запрос.
     def complete_chat(
         self,
         *,
         model: ModelConfig,
-        payload: dict[str, Any],
-        messages: Iterable[dict[str, str]],
+        payload: Dict[str, Any],
+        messages: Iterable[Dict[str, str]],
         log_entry: MessageLog,
     ) -> str:
         """Выполняет запрос к провайдеру и возвращает текст ответа."""

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Any, Iterable
+from typing import Any, Dict, Iterable
 
 from ...models import MessageLog
 
@@ -21,10 +21,15 @@ class BaseProviderClient(ABC):
 
     # NOTE[agent]: Метод выполняет запрос к чату поставщика.
     @abstractmethod
-    def send_chat_request(self, *, messages: Iterable[dict[str, str]], model_config: dict[str, Any]) -> dict:
+    def send_chat_request(
+        self,
+        *,
+        messages: Iterable[Dict[str, str]],
+        model_config: Dict[str, Any],
+    ) -> Dict[str, Any]:
         """Отправляет сообщения в API провайдера и возвращает ответ."""
 
     # NOTE[agent]: Метод извлекает полезные данные из ответа провайдера.
     @abstractmethod
-    def extract_message(self, *, data: dict, log_entry: MessageLog) -> str:
+    def extract_message(self, *, data: Dict[str, Any], log_entry: MessageLog) -> str:
         """Возвращает текст ответа и обновляет лог сообщения."""

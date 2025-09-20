@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Iterable
+from typing import Any, Dict, Iterable
 
 from ...models import MessageLog
 from .base import BaseProviderClient
@@ -13,13 +13,18 @@ class GoogleProviderClient(BaseProviderClient):
     """Представляет клиента Google AI. Пока недоступно."""
 
     # NOTE[agent]: Метод информирует о необходимости реализовать вызов API Google.
-    def send_chat_request(self, *, messages: Iterable[dict[str, str]], model_config: dict[str, Any]) -> dict:
+    def send_chat_request(
+        self,
+        *,
+        messages: Iterable[Dict[str, str]],
+        model_config: Dict[str, Any],
+    ) -> Dict[str, Any]:
         """Сообщает об отсутствии интеграции с Google AI."""
 
         raise RuntimeError("Интеграция с Google AI пока не реализована")
 
     # NOTE[agent]: Метод сигнализирует о неготовности интеграции.
-    def extract_message(self, *, data: dict, log_entry: MessageLog) -> str:
+    def extract_message(self, *, data: Dict[str, Any], log_entry: MessageLog) -> str:
         """Сообщает об отсутствии интеграции с Google AI."""
 
         raise RuntimeError("Интеграция с Google AI пока не реализована")

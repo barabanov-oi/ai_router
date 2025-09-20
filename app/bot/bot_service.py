@@ -141,7 +141,7 @@ class BotLifecycleMixin:
 class TelegramBotManager(BotLifecycleMixin, MessageHandlingMixin, DialogManagementMixin):
     """Управляет жизненным циклом Telegram-бота и обработкой сообщений."""
 
-    def __init__(self, app: Flask | None = None) -> None:
+    def __init__(self, app: Optional[Flask] = None) -> None:
         """Подготавливает менеджер и вспомогательные сервисы."""
 
         self._settings = SettingsService()
@@ -149,6 +149,6 @@ class TelegramBotManager(BotLifecycleMixin, MessageHandlingMixin, DialogManageme
         self._bot: Optional[TeleBot] = None
         self._polling_thread: Optional[threading.Thread] = None
         self._stop_event = threading.Event()
-        self._app: Flask | None = None
+        self._app: Optional[Flask] = None
         if app is not None:
             self.init_app(app)

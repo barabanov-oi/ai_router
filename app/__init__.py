@@ -9,8 +9,7 @@ import sys
 from logging import Handler
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
-from typing import Any
-from typing import TextIO
+from typing import Any, Dict, List, Optional, TextIO
 
 from flask import Flask
 from flask_migrate import Migrate
@@ -25,7 +24,7 @@ migrate = Migrate(compare_type=True)
 
 
 # NOTE[agent]: Функция создаёт и настраивает экземпляр приложения Flask.
-def create_app(config: dict[str, Any] | None = None) -> Flask:
+def create_app(config: Optional[Dict[str, Any]] = None) -> Flask:
     """Создаёт экземпляр Flask и регистрирует все компоненты.
 
     Args:
@@ -215,7 +214,7 @@ def _get_preferred_log_encoding() -> str:
     return "cp1251" if os.name == "nt" else "utf-8"
 
 
-def _configure_existing_handlers(handlers: list[Handler], encoding: str, level: int) -> None:
+def _configure_existing_handlers(handlers: List[Handler], encoding: str, level: int) -> None:
     """Обновляет кодировку потоковых обработчиков, созданных Flask ранее."""
 
     for handler in list(handlers):

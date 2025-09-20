@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
+from typing import Dict, Optional
 
 from sqlalchemy import func
 
@@ -20,9 +21,9 @@ class StatisticsService:
     def gather(
         self,
         days: int = 7,
-        start: datetime | None = None,
-        end: datetime | None = None,
-    ) -> dict[str, int]:
+        start: Optional[datetime] = None,
+        end: Optional[datetime] = None,
+    ) -> Dict[str, int]:
         """Вычисляет статистику за выбранный период.
 
         Args:

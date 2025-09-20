@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import re
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Dict, Iterable, Optional
 
 from flask import current_app
 from openai import OpenAI
@@ -18,10 +18,15 @@ from .base import BaseProviderClient
 class OpenAIProviderClient(BaseProviderClient):
     """Реализует логику отправки сообщений в OpenAI."""
 
-    _MODEL_PARAM_RULES: dict[str, dict[str, Any]] | None = None
+    _MODEL_PARAM_RULES: Optional[Dict[str, Dict[str, Any]]] = None
 
     # NOTE[agent]: Метод подготавливает сообщения и выполняет HTTP-запрос.
-    def send_chat_request(self, *, messages: Iterable[dict[str, str]], model_config: dict[str, Any]) -> dict:
+    def send_chat_request(
+        self,
+        *,
+        messages: Iterable[Dict[str, str]],
+        model_config: Dict[str, Any],
+    ) -> Dict[str, Any]:
         """Отправляет запрос в OpenAI Chat Completion API."""
 
         sanitized_config = self._sanitize_model_config(model_config)
@@ -43,7 +48,7 @@ class OpenAIProviderClient(BaseProviderClient):
         return data
 
     # NOTE[agent]: Метод извлекает полезные данные из ответа OpenAI.
-    def extract_message(self, *, data: dict, log_entry: MessageLog) -> str:
+    def extract_message(self, *, data: Dict[str, Any], log_entry: MessageLog) -> str:
         """Извлекает текст ответа и количество токенов."""
 
         choices = data.get("choices", [])
@@ -58,13 +63,13 @@ class OpenAIProviderClient(BaseProviderClient):
         return message
 
     @staticmethod
-    def _strip_think_tags(text: str | None) -> str:
+    def _strip_think_tags(text: Optional[str]) -> str:
         """Удаляет из ответа блоки вида <think>...</think>."""
 
         return re.sub(r"(?is)<think>.*?</think>", "", text or "").strip()
 
     @classmethod
-    def _get_param_rules(cls) -> dict[str, dict[str, Any]]:
+    def _get_param_rules(cls) -> Dict[str, Dict[str, Any]]:
         """Возвращает правила доступных параметров для моделей OpenAI."""
 
         if cls._MODEL_PARAM_RULES is None:
@@ -77,7 +82,7 @@ class OpenAIProviderClient(BaseProviderClient):
         return cls._MODEL_PARAM_RULES
 
     # NOTE[agent]: Метод приводит конфигурацию к допустимому набору параметров.
-    def _sanitize_model_config(self, model_config: dict[str, Any]) -> dict[str, Any]:
+    def _sanitize_model_config(self, model_config: Dict[str, Any]) -> Dict[str, Any]:
         """Приводит конфигурацию модели к параметрам, поддерживаемым API."""
 
         model_name = model_config.get("model")
@@ -88,8 +93,8 @@ class OpenAIProviderClient(BaseProviderClient):
         allowed = set(rules.get("allowed_params", [])) or {"model"}
         allowed.add("model")
         aliases = rules.get("aliases", {})
-        sanitized: dict[str, Any] = {}
-        dropped: dict[str, str] = {}
+        sanitized: Dict[str, Any] = {}
+        dropped: Dict[str, str] = {}
 
         for key, value in model_config.items():
             target_key = aliases.get(key, key)
@@ -109,14 +114,14 @@ class OpenAIProviderClient(BaseProviderClient):
         return sanitized
 
     # NOTE[agent]: Метод выбирает подходящее правило для указанной модели.
-    def _resolve_rules_for_model(self, model_name: str) -> dict[str, Any]:
+    def _resolve_rules_for_model(self, model_name: str) -> Dict[str, Any]:
         """Подбирает правила параметров для указанной модели."""
 
         rules_map = self._get_param_rules()
         if model_name in rules_map:
             return rules_map[model_name]
 
-        matched_rule: dict[str, Any] | None = None
+        matched_rule: Optional[Dict[str, Any]] = None
         matched_prefix_length = -1
         for key, rules in rules_map.items():
             if key == "default":

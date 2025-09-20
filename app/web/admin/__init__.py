@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Dict, List, Optional, Union
 
 from flask import Blueprint, Response, current_app, jsonify, redirect, render_template, request, url_for
 
@@ -24,8 +24,8 @@ def dashboard() -> str:
     period = int(request.args.get("days", 7) or 7)
     start_raw = request.args.get("start")
     end_raw = request.args.get("end")
-    start_date: datetime | None = None
-    end_date: datetime | None = None
+    start_date: Optional[datetime] = None
+    end_date: Optional[datetime] = None
     if start_raw and end_raw:
         try:
             start_date = datetime.strptime(start_raw, "%Y-%m-%d")
@@ -40,7 +40,7 @@ def dashboard() -> str:
     if start_date and end_date:
         selected_period_days = (end_date - start_date).days + 1
     settings = SettingsService().all_settings()
-    bot_manager: TelegramBotManager | None = current_app.extensions.get("bot_manager")  # type: ignore[assignment]
+    bot_manager: Optional[TelegramBotManager] = current_app.extensions.get("bot_manager")  # type: ignore[assignment]
     is_bot_running = bot_manager.is_running() if bot_manager else False
     models = ModelConfig.query.order_by(ModelConfig.created_at.desc()).all()
     provider_titles = LLMProvider.vendor_titles()
@@ -73,7 +73,7 @@ def dashboard() -> str:
 
 # NOTE[agent]: Страница управления пользователями позволяет изменять активность.
 @admin_bp.route("/users", methods=["GET"])
-def manage_users() -> Response | str:
+def manage_users() -> Union[Response, str]:
     """Отображает список пользователей."""
 
     users = User.query.order_by(User.created_at.desc()).all()
@@ -131,7 +131,7 @@ def logs() -> str:
         .limit(dialog_limit)
         .all()
     )
-    dialog_logs: list[dict[str, Any]] = []
+    dialog_logs: List[Dict[str, Any]] = []
     for row in dialog_rows:
         base_title = row.first_message or ""
         title = base_title[:15]
@@ -167,7 +167,7 @@ def logs() -> str:
 
 # NOTE[agent]: Управление поставщиками LLM и их API-ключами.
 @admin_bp.route("/providers", methods=["GET", "POST"])
-def manage_providers() -> Response | str:
+def manage_providers() -> Union[Response, str]:
     """Позволяет добавлять и редактировать поставщиков API."""
 
     vendor_choices = list(LLMProvider.allowed_vendors())
@@ -217,7 +217,7 @@ def manage_providers() -> Response | str:
 
 # NOTE[agent]: Управление конфигурациями моделей и выбор активной.
 @admin_bp.route("/models", methods=["GET", "POST"])
-def manage_models() -> Response | str:
+def manage_models() -> Union[Response, str]:
     """Позволяет добавлять новые модели и выбирать активную."""
 
     settings_service = SettingsService()
@@ -252,7 +252,7 @@ def manage_models() -> Response | str:
         top_p = _float("top_p", 1.0)
         is_default = request.form.get("is_default") == "on"
         provider_id_raw = request.form.get("provider_id")
-        provider: LLMProvider | None = None
+        provider: Optional[LLMProvider] = None
         try:
             provider_id = int(provider_id_raw) if provider_id_raw else None
         except (TypeError, ValueError):
@@ -283,7 +283,7 @@ def manage_models() -> Response | str:
             current_app.logger.warning("Не удалось создать модель %s: не выбран поставщик", name)
         elif action == "update":
             model_id_raw = request.form.get("model_id")
-            model_obj: ModelConfig | None = None
+            model_obj: Optional[ModelConfig] = None
             try:
                 model_id = int(model_id_raw) if model_id_raw else None
             except (TypeError, ValueError):
@@ -326,7 +326,7 @@ def manage_models() -> Response | str:
 
 # NOTE[agent]: Настройки API-ключей и параметров интеграции.
 @admin_bp.route("/settings", methods=["GET", "POST"])
-def manage_settings() -> Response | str:
+def manage_settings() -> Union[Response, str]:
     """Позволяет обновить интеграционные настройки системы."""
 
     settings_service = SettingsService()
@@ -351,7 +351,7 @@ def api_settings() -> Response:
     settings_service = SettingsService()
     if request.method == "GET":
         return jsonify(settings_service.all_settings())
-    payload: dict[str, Any] = request.get_json(silent=True) or {}
+    payload: Dict[str, Any] = request.get_json(silent=True) or {}
     for key, value in payload.items():
         settings_service.set(key, value)
     return jsonify({"status": "ok"})
@@ -362,7 +362,7 @@ def api_settings() -> Response:
 def api_start_polling() -> Response:
     """Запускает бота в режиме polling."""
 
-    bot_manager: TelegramBotManager | None = current_app.extensions.get("bot_manager")  # type: ignore[assignment]
+    bot_manager: Optional[TelegramBotManager] = current_app.extensions.get("bot_manager")  # type: ignore[assignment]
     if not bot_manager:
         return jsonify({"status": "error", "message": "Bot manager is not configured"}), 500
     try:
@@ -378,7 +378,7 @@ def api_start_polling() -> Response:
 def api_start_webhook() -> Response:
     """Устанавливает webhook для Telegram."""
 
-    bot_manager: TelegramBotManager | None = current_app.extensions.get("bot_manager")  # type: ignore[assignment]
+    bot_manager: Optional[TelegramBotManager] = current_app.extensions.get("bot_manager")  # type: ignore[assignment]
     if not bot_manager:
         return jsonify({"status": "error", "message": "Bot manager is not configured"}), 500
     try:
@@ -394,7 +394,7 @@ def api_start_webhook() -> Response:
 def api_stop_bot() -> Response:
     """Останавливает polling Telegram-бота."""
 
-    bot_manager: TelegramBotManager | None = current_app.extensions.get("bot_manager")  # type: ignore[assignment]
+    bot_manager: Optional[TelegramBotManager] = current_app.extensions.get("bot_manager")  # type: ignore[assignment]
     if not bot_manager:
         return jsonify({"status": "error", "message": "Bot manager is not configured"}), 500
     bot_manager.stop()
@@ -406,7 +406,7 @@ def api_stop_bot() -> Response:
 def telegram_webhook() -> Response:
     """Принимает webhook и передаёт обновление менеджеру бота."""
 
-    bot_manager: TelegramBotManager | None = current_app.extensions.get("bot_manager")  # type: ignore[assignment]
+    bot_manager: Optional[TelegramBotManager] = current_app.extensions.get("bot_manager")  # type: ignore[assignment]
     if not bot_manager:
         return jsonify({"status": "error", "message": "Bot manager is not configured"}), 500
     payload = request.get_json(force=True)

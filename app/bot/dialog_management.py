@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Iterable, Optional
+from typing import Dict, Iterable, Optional, Tuple
 
 from telebot import types
 
@@ -18,8 +18,8 @@ class DialogManagementMixin:
         self,
         dialog: Dialog,
         new_message: MessageLog,
-        system_instruction: str | None = None,
-    ) -> Iterable[dict[str, str]]:
+        system_instruction: Optional[str] = None,
+    ) -> Iterable[Dict[str, str]]:
         """Создаёт список сообщений для API выбранного провайдера."""
 
         mode = MODE_DEFINITIONS.get(new_message.mode, MODE_DEFINITIONS["default"])
@@ -88,7 +88,7 @@ class DialogManagementMixin:
         return Dialog.query.filter_by(user_id=user.id, is_active=True).order_by(Dialog.started_at.desc()).first()
 
     # NOTE[agent]: Комбинация настроек модели с параметрами режима.
-    def _get_model_config(self, mode_definition: dict) -> tuple[ModelConfig, dict, Optional[str]]:
+    def _get_model_config(self, mode_definition: dict) -> Tuple[ModelConfig, dict, Optional[str]]:
         """Формирует конфигурацию запроса к выбранному провайдеру."""
 
         settings_model_id = self._settings.get("active_model_id")

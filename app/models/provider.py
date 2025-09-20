@@ -1,6 +1,7 @@
 """Поставщики API для LLM."""
 
 from datetime import datetime
+from typing import Dict, Optional, Tuple
 
 from . import db
 
@@ -30,14 +31,14 @@ class LLMProvider(db.Model):
 
     # NOTE[agent]: Метод предоставляет перечень допустимых поставщиков.
     @classmethod
-    def allowed_vendors(cls) -> tuple[str, ...]:
+    def allowed_vendors(cls) -> Tuple[str, ...]:
         """Возвращает поддерживаемых поставщиков API."""
 
         return (cls.VENDOR_OPENAI, cls.VENDOR_GOOGLE, cls.VENDOR_GROQ)
 
     # NOTE[agent]: Метод сопоставляет внутренние идентификаторы и отображаемые названия.
     @classmethod
-    def vendor_titles(cls) -> dict[str, str]:
+    def vendor_titles(cls) -> Dict[str, str]:
         """Возвращает словарь для отображения названий поставщиков."""
 
         return {
@@ -47,7 +48,12 @@ class LLMProvider(db.Model):
         }
 
     # NOTE[agent]: Метод обновляет данные поставщика и сбрасывает кэш клиентов.
-    def update_credentials(self, *, name: str | None = None, api_key: str | None = None) -> None:
+    def update_credentials(
+        self,
+        *,
+        name: Optional[str] = None,
+        api_key: Optional[str] = None,
+    ) -> None:
         """Обновляет имя и API-ключ поставщика."""
 
         if name is not None:

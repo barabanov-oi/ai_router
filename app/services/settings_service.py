@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Dict, Optional
 
 from flask import current_app
 
@@ -17,7 +17,7 @@ class SettingsService:
         """Подготавливает сервис к работе."""
 
     # NOTE[agent]: Метод возвращает значение настройки или значение по умолчанию.
-    def get(self, key: str, default: str | None = None) -> str:
+    def get(self, key: str, default: Optional[str] = None) -> str:
         """Получает строковое значение настройки.
 
         Args:
@@ -49,7 +49,7 @@ class SettingsService:
         db.session.commit()
 
     # NOTE[agent]: Метод возвращает множество всех настроек.
-    def all_settings(self) -> dict[str, str]:
+    def all_settings(self) -> Dict[str, str]:
         """Возвращает все настройки в виде словаря."""
 
         items = AppSetting.query.all()
