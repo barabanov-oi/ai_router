@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import io
+import locale
 import logging
 import os
 import sys
@@ -74,17 +76,22 @@ def create_app(config: dict[str, Any] | None = None) -> Flask:
 def _configure_logging(app: Flask) -> None:
     """Настраивает файловый и консольный логгеры."""
 
-    log_level = os.environ.get("AI_ROUTER_LOG_LEVEL", "INFO").upper()
-    encoding = _get_platform_encoding()
-    _configure_stream_encoding(encoding)
-    app.logger.setLevel(getattr(logging, log_level, logging.INFO))
+    log_level_name = os.environ.get("AI_ROUTER_LOG_LEVEL", "INFO").upper()
+    log_level = getattr(logging, log_level_name, logging.INFO)
+    stream_encoding = _get_platform_encoding()
+    _configure_stream_encoding(stream_encoding)
 
-    if not app.logger.handlers:
-        stream_handler = logging.StreamHandler()
-        stream_handler.setLevel(app.logger.level)
-        formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
-        stream_handler.setFormatter(formatter)
-        app.logger.addHandler(stream_handler)
+    formatter = logging.Formatter("[%(asctime)s] %(levelname)s in %(module)s: %(message)s")
+    app.logger.setLevel(log_level)
+
+    for handler in list(app.logger.handlers):
+        app.logger.removeHandler(handler)
+        handler.close()
+
+    stream_handler = logging.StreamHandler()
+    stream_handler.setLevel(log_level)
+    stream_handler.setFormatter(formatter)
+    app.logger.addHandler(stream_handler)
 
     log_directory = Path("logs")
     log_directory.mkdir(exist_ok=True)
@@ -92,16 +99,34 @@ def _configure_logging(app: Flask) -> None:
         log_directory / "app.log",
         maxBytes=1_000_000,
         backupCount=5,
-        encoding=encoding,
+        encoding="utf-8",
     )
-    file_handler.setLevel(app.logger.level)
-    file_handler.setFormatter(logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s"))
+    file_handler.setLevel(log_level)
+    file_handler.setFormatter(formatter)
     app.logger.addHandler(file_handler)
 
 
 # NOTE[agent]: Определяет кодировку логирования для разных операционных систем.
 def _get_platform_encoding() -> str:
-    """Возвращает кодировку, подходящую для текущей операционной системы."""
+    """Определяет кодировку для потоковых логов с учётом платформы."""
+
+    preferred_encodings = (
+        os.environ.get("AI_ROUTER_LOG_ENCODING"),
+        getattr(sys.stdout, "encoding", None),
+        getattr(sys.stderr, "encoding", None),
+        locale.getpreferredencoding(False),
+        sys.getdefaultencoding(),
+    )
+
+    sample = "тест"
+    for encoding in preferred_encodings:
+        if not encoding:
+            continue
+        try:
+            sample.encode(encoding)
+        except (LookupError, UnicodeEncodeError):
+            continue
+        return encoding
 
     return "cp1251" if os.name == "nt" else "utf-8"
 
@@ -110,10 +135,22 @@ def _get_platform_encoding() -> str:
 def _configure_stream_encoding(encoding: str) -> None:
     """Перенастраивает stdout и stderr на указанную кодировку, если это возможно."""
 
-    for stream in (sys.stdout, sys.stderr):
+    for name in ("stdout", "stderr"):
+        stream = getattr(sys, name, None)
+        if stream is None:
+            continue
         reconfigure = getattr(stream, "reconfigure", None)
         if callable(reconfigure):
-            reconfigure(encoding=encoding)
+            try:
+                reconfigure(encoding=encoding, errors="backslashreplace")
+                continue
+            except (LookupError, ValueError, OSError):
+                pass
+        buffer = getattr(stream, "buffer", None)
+        if buffer is not None:
+            text_stream = io.TextIOWrapper(buffer, encoding=encoding, errors="backslashreplace")
+            text_stream.line_buffering = True
+            setattr(sys, name, text_stream)
 
 
 # NOTE[agent]: Функция гарантирует наличие папки instance для базы данных.
