@@ -1,3 +1,5 @@
 """Пакет с логикой Telegram-бота."""
 
-__all__ = []
+from .bot_service import TelegramBotManager
+
+__all__ = ["TelegramBotManager"]

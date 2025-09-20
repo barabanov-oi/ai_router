@@ -12,8 +12,8 @@ from flask import Flask, current_app
 from telebot import TeleBot, types
 
 from ..models import Dialog, MessageLog, ModelConfig, User, db
-from .openai_service import OpenAIService
-from .settings_service import SettingsService
+from ..services.openai_service import OpenAIService
+from ..services.settings_service import SettingsService
 
 
 # NOTE[agent]: Набор режимов генерации, доступных пользователю в боте.

@@ -8,7 +8,7 @@ from typing import Any
 from flask import Blueprint, Response, current_app, jsonify, redirect, render_template, request, url_for
 
 from ...models import Dialog, MessageLog, ModelConfig, User, db
-from ...services.bot_service import TelegramBotManager
+from ...bot.bot_service import TelegramBotManager
 from ...services.settings_service import SettingsService
 from ...services.statistics_service import StatisticsService
 from sqlalchemy import func
