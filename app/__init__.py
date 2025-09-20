@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+import sys
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Any
@@ -74,6 +75,8 @@ def _configure_logging(app: Flask) -> None:
     """Настраивает файловый и консольный логгеры."""
 
     log_level = os.environ.get("AI_ROUTER_LOG_LEVEL", "INFO").upper()
+    encoding = _get_platform_encoding()
+    _configure_stream_encoding(encoding)
     app.logger.setLevel(getattr(logging, log_level, logging.INFO))
 
     if not app.logger.handlers:
@@ -85,10 +88,32 @@ def _configure_logging(app: Flask) -> None:
 
     log_directory = Path("logs")
     log_directory.mkdir(exist_ok=True)
-    file_handler = RotatingFileHandler(log_directory / "app.log", maxBytes=1_000_000, backupCount=5)
+    file_handler = RotatingFileHandler(
+        log_directory / "app.log",
+        maxBytes=1_000_000,
+        backupCount=5,
+        encoding=encoding,
+    )
     file_handler.setLevel(app.logger.level)
     file_handler.setFormatter(logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s"))
     app.logger.addHandler(file_handler)
+
+
+# NOTE[agent]: Определяет кодировку логирования для разных операционных систем.
+def _get_platform_encoding() -> str:
+    """Возвращает кодировку, подходящую для текущей операционной системы."""
+
+    return "cp1251" if os.name == "nt" else "utf-8"
+
+
+# NOTE[agent]: Гарантирует корректную кодировку потоков вывода для логов.
+def _configure_stream_encoding(encoding: str) -> None:
+    """Перенастраивает stdout и stderr на указанную кодировку, если это возможно."""
+
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if callable(reconfigure):
+            reconfigure(encoding=encoding)
 
 
 # NOTE[agent]: Функция гарантирует наличие папки instance для базы данных.
