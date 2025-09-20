@@ -16,7 +16,7 @@ from flask import Flask
 from flask_migrate import Migrate
 from sqlalchemy.exc import SQLAlchemyError
 
-from .models import db, AppSetting, ModelConfig
+from .models import db, AppSetting, LLMProvider, ModelConfig
 from .bot.bot_service import TelegramBotManager
 
 
@@ -120,6 +120,7 @@ def _try_seed_defaults(app: Flask) -> None:
     """Пытается создать базовые настройки и дефолтную модель, если таблицы уже существуют."""
     try:
         _ensure_default_settings()
+        _ensure_default_provider()
         _ensure_default_model()
     except SQLAlchemyError as exc:
         # Таблицы могут быть ещё не созданы (до flask db upgrade).
@@ -131,7 +132,6 @@ def _ensure_default_settings() -> None:
     """Создаёт базовые настройки, если они отсутствуют в базе."""
 
     defaults = {
-        "openai_api_key": "",
         "default_mode": "default",
         "telegram_bot_token": "",
         "webhook_url": "",
@@ -149,18 +149,41 @@ def _ensure_default_settings() -> None:
         db.session.commit()
 
 
+# NOTE[agent]: Создаём запись поставщика OpenAI по умолчанию.
+def _ensure_default_provider() -> LLMProvider:
+    """Гарантирует наличие базового поставщика OpenAI."""
+
+    provider = LLMProvider.query.filter_by(vendor=LLMProvider.VENDOR_OPENAI).first()
+    if provider:
+        return provider
+
+    provider = LLMProvider(
+        name="OpenAI (по умолчанию)",
+        vendor=LLMProvider.VENDOR_OPENAI,
+        api_key="",
+    )
+    db.session.add(provider)
+    db.session.commit()
+    return provider
+
+
 # NOTE[agent]: Создаём типовую конфигурацию модели, чтобы система работала "из коробки".
 def _ensure_default_model() -> None:
     """Гарантирует наличие хотя бы одной конфигурации модели в базе."""
 
     if ModelConfig.query.count() == 0:
+        provider = _ensure_default_provider()
         # NOTE[agent]: Поля подстраиваются под текущую схему ModelConfig.
         # Если у модели используется provider_id/instruction — адаптируй ниже.
         model = ModelConfig(
             name="gpt-3.5-turbo",
-            model="gpt-3.5-turbo",      # если в схеме вместо `model` используется `provider_id`, замени соответствующим полем
+            model="gpt-3.5-turbo",
+            provider=provider,
             temperature=1.0,
             max_tokens=512,
+            top_p=1.0,
+            frequency_penalty=0.0,
+            presence_penalty=0.0,
             system_instruction="Ты дружелюбный помощник.",
             is_default=True,
         )

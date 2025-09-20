@@ -44,6 +44,9 @@
 <div class="active-model-badge" title="{{ active_model.model }}">
   <span class="badge-name">{{ active_model.name }}</span>
   <span class="badge-subtitle">{{ active_model.model }}</span>
+  {% if active_model.provider %}
+  <span class="badge-subtitle">{{ provider_titles.get(active_model.provider.vendor, active_model.provider.vendor) }} — {{ active_model.provider.name }}</span>
+  {% endif %}
 </div>
 {% else %}
 <p>Активная модель не выбрана.</p>

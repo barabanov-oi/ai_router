@@ -7,7 +7,7 @@ from typing import Any
 
 from flask import Blueprint, Response, current_app, jsonify, redirect, render_template, request, url_for
 
-from ...models import Dialog, MessageLog, ModelConfig, User, db
+from ...models import Dialog, LLMProvider, MessageLog, ModelConfig, User, db
 from ...bot.bot_service import TelegramBotManager
 from ...services.settings_service import SettingsService
 from ...services.statistics_service import StatisticsService
@@ -43,6 +43,7 @@ def dashboard() -> str:
     bot_manager: TelegramBotManager | None = current_app.extensions.get("bot_manager")  # type: ignore[assignment]
     is_bot_running = bot_manager.is_running() if bot_manager else False
     models = ModelConfig.query.order_by(ModelConfig.created_at.desc()).all()
+    provider_titles = LLMProvider.vendor_titles()
     active_model = None
     active_model_id = settings.get("active_model_id", "")
     for model in models:
@@ -66,6 +67,7 @@ def dashboard() -> str:
         active_model=active_model,
         start_value=start_value,
         end_value=end_value,
+        provider_titles=provider_titles,
     )
 
 
@@ -163,6 +165,56 @@ def logs() -> str:
     )
 
 
+# NOTE[agent]: Управление поставщиками LLM и их API-ключами.
+@admin_bp.route("/providers", methods=["GET", "POST"])
+def manage_providers() -> Response | str:
+    """Позволяет добавлять и редактировать поставщиков API."""
+
+    vendor_choices = list(LLMProvider.allowed_vendors())
+    allowed_vendors = set(vendor_choices)
+    vendor_titles = LLMProvider.vendor_titles()
+
+    if request.method == "POST":
+        action = request.form.get("action", "create")
+        vendor = (request.form.get("vendor", "") or "").strip().lower()
+        name = request.form.get("name", "").strip()
+        api_key = request.form.get("api_key", "").strip()
+
+        if action == "create":
+            if vendor not in allowed_vendors:
+                current_app.logger.warning("Не удалось создать провайдера: неизвестный тип %s", vendor)
+            else:
+                provider_name = name or vendor_titles.get(vendor, vendor.title())
+                provider = LLMProvider(name=provider_name, vendor=vendor, api_key=api_key)
+                db.session.add(provider)
+                db.session.commit()
+        elif action == "update":
+            provider_id_raw = request.form.get("provider_id")
+            try:
+                provider_id = int(provider_id_raw) if provider_id_raw else None
+            except (TypeError, ValueError):
+                provider_id = None
+            provider = LLMProvider.query.get(provider_id) if provider_id is not None else None
+            if not provider:
+                current_app.logger.warning("Не удалось обновить провайдера: id=%s не найден", provider_id_raw)
+            else:
+                if vendor and vendor in allowed_vendors:
+                    provider.vendor = vendor
+                elif vendor:
+                    current_app.logger.warning("Игнорируем неизвестный тип провайдера: %s", vendor)
+                new_name = name or provider.name
+                provider.update_credentials(name=new_name, api_key=api_key)
+                db.session.commit()
+
+    providers = LLMProvider.query.order_by(LLMProvider.created_at.desc()).all()
+    return render_template(
+        "admin/providers.html",
+        providers=providers,
+        vendor_titles=vendor_titles,
+        vendor_choices=vendor_choices,
+    )
+
+
 # NOTE[agent]: Управление конфигурациями моделей и выбор активной.
 @admin_bp.route("/models", methods=["GET", "POST"])
 def manage_models() -> Response | str:
@@ -199,13 +251,24 @@ def manage_models() -> Response | str:
         max_tokens = _int("max_tokens", 512)
         top_p = _float("top_p", 1.0)
         is_default = request.form.get("is_default") == "on"
+        provider_id_raw = request.form.get("provider_id")
+        provider: LLMProvider | None = None
+        try:
+            provider_id = int(provider_id_raw) if provider_id_raw else None
+        except (TypeError, ValueError):
+            provider_id = None
+        if provider_id is not None:
+            provider = LLMProvider.query.get(provider_id)
+            if provider is None:
+                current_app.logger.warning("Поставщик с id=%s не найден", provider_id)
 
-        if action == "create" and name and model_name:
+        if action == "create" and name and model_name and provider:
             if is_default:
                 ModelConfig.query.update({ModelConfig.is_default: False})
             model = ModelConfig(
                 name=name,
                 model=model_name,
+                provider=provider,
                 temperature=temperature,
                 max_tokens=max_tokens,
                 top_p=top_p,
@@ -216,6 +279,8 @@ def manage_models() -> Response | str:
             db.session.commit()
             if is_default:
                 settings_service.set("active_model_id", str(model.id))
+        elif action == "create" and not provider:
+            current_app.logger.warning("Не удалось создать модель %s: не выбран поставщик", name)
         elif action == "update":
             model_id_raw = request.form.get("model_id")
             model_obj: ModelConfig | None = None
@@ -228,6 +293,8 @@ def manage_models() -> Response | str:
             if model_obj:
                 model_obj.name = name or model_obj.name
                 model_obj.model = model_name or model_obj.model
+                if provider:
+                    model_obj.provider = provider
                 model_obj.temperature = temperature
                 model_obj.max_tokens = max_tokens
                 model_obj.top_p = top_p
@@ -245,8 +312,16 @@ def manage_models() -> Response | str:
                     if current_active and current_active == str(model_obj.id):
                         settings_service.set("active_model_id", "")
     models = ModelConfig.query.order_by(ModelConfig.created_at.desc()).all()
+    providers = LLMProvider.query.order_by(LLMProvider.name.asc()).all()
+    provider_titles = LLMProvider.vendor_titles()
     active_model_id = settings_service.get("active_model_id")
-    return render_template("admin/models.html", models=models, active_model_id=active_model_id)
+    return render_template(
+        "admin/models.html",
+        models=models,
+        active_model_id=active_model_id,
+        providers=providers,
+        provider_titles=provider_titles,
+    )
 
 
 # NOTE[agent]: Настройки API-ключей и параметров интеграции.
@@ -255,7 +330,7 @@ def manage_settings() -> Response | str:
     """Позволяет обновить интеграционные настройки системы."""
 
     settings_service = SettingsService()
-    keys = ["openai_api_key", "telegram_bot_token", "webhook_url", "webhook_secret", "default_mode"]
+    keys = ["telegram_bot_token", "webhook_url", "webhook_secret", "default_mode"]
     if request.method == "POST":
         for key in keys:
             settings_service.set(key, request.form.get(key, ""))

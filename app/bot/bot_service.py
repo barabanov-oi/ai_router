@@ -11,7 +11,7 @@ from typing import Optional
 from flask import Flask, current_app
 from telebot import TeleBot, types
 
-from ..services.openai_service import OpenAIService
+from ..services.llm_service import LLMService
 from ..services.settings_service import SettingsService
 from .dialog_management import DialogManagementMixin
 from .message_handlers import MessageHandlingMixin
@@ -145,7 +145,7 @@ class TelegramBotManager(BotLifecycleMixin, MessageHandlingMixin, DialogManageme
         """Подготавливает менеджер и вспомогательные сервисы."""
 
         self._settings = SettingsService()
-        self._openai = OpenAIService()
+        self._llm = LLMService()
         self._bot: Optional[TeleBot] = None
         self._polling_thread: Optional[threading.Thread] = None
         self._stop_event = threading.Event()

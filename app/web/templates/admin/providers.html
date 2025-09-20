@@ -1,0 +1,76 @@
+{% extends 'admin/base.html' %}
+{% block title %}Поставщики — AI Router{% endblock %}
+{% block content %}
+<h2>Поставщики API</h2>
+<table>
+  <thead>
+    <tr>
+      <th>ID</th>
+      <th>Название</th>
+      <th>Тип</th>
+      <th>Создан</th>
+      <th>Обновлён</th>
+      <th>Количество моделей</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for provider in providers %}
+    <tr>
+      <td>{{ provider.id }}</td>
+      <td>{{ provider.name }}</td>
+      <td>{{ vendor_titles.get(provider.vendor, provider.vendor) }}</td>
+      <td>{{ provider.created_at.strftime('%d.%m.%Y %H:%M') if provider.created_at else '—' }}</td>
+      <td>{{ provider.updated_at.strftime('%d.%m.%Y %H:%M') if provider.updated_at else '—' }}</td>
+      <td>{{ provider.models|length }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+<h3>Редактирование поставщиков</h3>
+{% if providers %}
+  {% for provider in providers %}
+  <details class="model-editor">
+    <summary>{{ provider.name }} — {{ vendor_titles.get(provider.vendor, provider.vendor) }}</summary>
+    <form method="post">
+      <input type="hidden" name="action" value="update">
+      <input type="hidden" name="provider_id" value="{{ provider.id }}">
+      <label>Название
+        <input type="text" name="name" value="{{ provider.name }}" required>
+      </label>
+      <label>Тип поставщика
+        <select name="vendor" required>
+          {% for vendor in vendor_choices %}
+          <option value="{{ vendor }}" {% if provider.vendor == vendor %}selected{% endif %}>{{ vendor_titles.get(vendor, vendor) }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>API-ключ
+        <input type="text" name="api_key" value="{{ provider.api_key }}" required>
+      </label>
+      <button class="btn" type="submit">Сохранить</button>
+    </form>
+  </details>
+  {% endfor %}
+{% else %}
+<p>Поставщики ещё не добавлены.</p>
+{% endif %}
+<form method="post" class="model-form">
+  <input type="hidden" name="action" value="create">
+  <h3>Новый поставщик</h3>
+  <label>Название
+    <input type="text" name="name" placeholder="Например, Основной ключ" required>
+  </label>
+  <label>Тип поставщика
+    <select name="vendor" required>
+      <option value="" disabled selected>-- выберите тип --</option>
+      {% for vendor in vendor_choices %}
+      <option value="{{ vendor }}">{{ vendor_titles.get(vendor, vendor) }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label>API-ключ
+    <input type="text" name="api_key" placeholder="sk-..." required>
+  </label>
+  <button class="btn" type="submit">Добавить</button>
+</form>
+{% endblock %}

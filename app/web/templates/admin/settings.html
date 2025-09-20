@@ -2,10 +2,8 @@
 {% block title %}Настройки — AI Router{% endblock %}
 {% block content %}
 <h2>Настройки</h2>
+<p>API-ключи провайдеров теперь настраиваются на странице <a href="{{ url_for('admin.manage_providers') }}">«Поставщики»</a>.</p>
 <form method="post">
-  <label>OpenAI API Key
-    <input type="text" name="openai_api_key" value="{{ settings.get('openai_api_key', '') }}">
-  </label>
   <label>Токен Telegram-бота
     <input type="text" name="telegram_bot_token" value="{{ settings.get('telegram_bot_token', '') }}">
   </label>

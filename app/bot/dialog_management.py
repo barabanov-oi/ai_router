@@ -13,14 +13,14 @@ from .bot_modes import MODE_DEFINITIONS
 class DialogManagementMixin:
     """Предоставляет методы для работы с пользователями, диалогами и LLM."""
 
-    # NOTE[agent]: Формирует контекст диалога для передачи в OpenAI.
-    def _build_openai_messages(
+    # NOTE[agent]: Формирует контекст диалога для передачи поставщику LLM.
+    def _build_provider_messages(
         self,
         dialog: Dialog,
         new_message: MessageLog,
         system_instruction: str | None = None,
     ) -> Iterable[dict[str, str]]:
-        """Создаёт список сообщений для OpenAI API."""
+        """Создаёт список сообщений для API выбранного провайдера."""
 
         mode = MODE_DEFINITIONS.get(new_message.mode, MODE_DEFINITIONS["default"])
         default_prompt = mode.get("system", MODE_DEFINITIONS["default"]["system"])
@@ -37,15 +37,19 @@ class DialogManagementMixin:
             if log.llm_response:
                 yield {"role": "assistant", "content": log.llm_response}
 
-    # NOTE[agent]: Вызов OpenAI API и обработка ответа.
+    # NOTE[agent]: Вызов поставщика LLM и обработка ответа.
     def _query_llm(self, dialog: Dialog, log_entry: MessageLog) -> str:
-        """Отправляет контекст в OpenAI и возвращает ответ."""
+        """Отправляет контекст провайдеру LLM и возвращает ответ."""
 
         mode = MODE_DEFINITIONS.get(log_entry.mode, MODE_DEFINITIONS["default"])
-        model_config, system_instruction = self._get_model_config(mode)
-        messages = list(self._build_openai_messages(dialog, log_entry, system_instruction))
-        data = self._openai.send_chat_request(messages=messages, model_config=model_config)
-        return self._openai.extract_message(data, log_entry)
+        model, model_payload, system_instruction = self._get_model_config(mode)
+        messages = list(self._build_provider_messages(dialog, log_entry, system_instruction))
+        return self._llm.complete_chat(
+            model=model,
+            payload=model_payload,
+            messages=messages,
+            log_entry=log_entry,
+        )
 
     # NOTE[agent]: Создаёт inline-клавиатуру для управления диалогом.
     def _build_inline_keyboard(self) -> types.InlineKeyboardMarkup:
@@ -84,8 +88,8 @@ class DialogManagementMixin:
         return Dialog.query.filter_by(user_id=user.id, is_active=True).order_by(Dialog.started_at.desc()).first()
 
     # NOTE[agent]: Комбинация настроек модели с параметрами режима.
-    def _get_model_config(self, mode_definition: dict) -> tuple[dict, Optional[str]]:
-        """Формирует конфигурацию запроса к OpenAI."""
+    def _get_model_config(self, mode_definition: dict) -> tuple[ModelConfig, dict, Optional[str]]:
+        """Формирует конфигурацию запроса к выбранному провайдеру."""
 
         settings_model_id = self._settings.get("active_model_id")
         query = ModelConfig.query
@@ -102,11 +106,13 @@ class DialogManagementMixin:
             model = query.filter_by(is_default=True).first()
         if not model:
             model = query.first()
-        base_config = model.to_openai_kwargs() if model else {"model": "gpt-3.5-turbo"}
+        if not model:
+            raise RuntimeError("В системе не настроены конфигурации моделей")
+        base_config = model.to_request_options()
         customized = base_config.copy()
         if "temperature" in mode_definition:
             customized["temperature"] = mode_definition["temperature"]
         if "max_tokens" in mode_definition:
             customized["max_tokens"] = mode_definition["max_tokens"]
-        instruction = model.system_instruction if model and model.system_instruction else None
-        return customized, instruction
+        instruction = model.system_instruction if model.system_instruction else None
+        return model, customized, instruction

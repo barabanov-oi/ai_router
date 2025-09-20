@@ -1,4 +1,4 @@
-"""Инкапсуляция вызовов OpenAI API."""
+"""Клиент взаимодействия с OpenAI Chat Completion API."""
 
 from __future__ import annotations
 
@@ -7,48 +7,32 @@ import re
 from pathlib import Path
 from typing import Any, Iterable
 
-from openai import OpenAI
 from flask import current_app
+from openai import OpenAI
 
-from ..models import MessageLog, db
-from .settings_service import SettingsService
+from ...models import MessageLog, db
+from .base import BaseProviderClient
 
 
-# NOTE[agent]: Класс служит для общения с OpenAI с учётом настроек приложения.
-class OpenAIService:
-    """Обеспечивает отправку сообщений в OpenAI Chat Completion API."""
+# NOTE[agent]: Клиент реализует протокол общения с OpenAI.
+class OpenAIProviderClient(BaseProviderClient):
+    """Реализует логику отправки сообщений в OpenAI."""
 
     _MODEL_PARAM_RULES: dict[str, dict[str, Any]] | None = None
 
-    def __init__(self) -> None:
-        """Инициализирует сервис и проверяет наличие API-ключа."""
-
-        self._settings = SettingsService()
-
     # NOTE[agent]: Метод подготавливает сообщения и выполняет HTTP-запрос.
-    def send_chat_request(self, messages: Iterable[dict[str, str]], model_config: dict) -> dict:
-        """Отправляет запрос в OpenAI Chat Completion API.
-
-        Args:
-            messages: Последовательность сообщений в формате OpenAI.
-            model_config: Параметры модели для запроса.
-
-        Returns:
-            Ответ API, преобразованный в словарь.
-        """
-
-        api_key = self._settings.get("openai_api_key")
-        if not api_key:
-            msg = "OpenAI API key is not configured"
-            current_app.logger.error(msg)
-            raise RuntimeError(msg)
+    def send_chat_request(self, *, messages: Iterable[dict[str, str]], model_config: dict[str, Any]) -> dict:
+        """Отправляет запрос в OpenAI Chat Completion API."""
 
         sanitized_config = self._sanitize_model_config(model_config)
         payload = {"messages": list(messages), **sanitized_config}
-        current_app.logger.debug("Запрос к OpenAI: %s", json.dumps({"payload": payload}, ensure_ascii=False))
+        current_app.logger.debug(
+            "Запрос к OpenAI: %s",
+            json.dumps({"payload": payload}, ensure_ascii=False),
+        )
 
         try:
-            client = OpenAI(api_key=api_key)
+            client = OpenAI(api_key=self._api_key)
             response = client.chat.completions.create(**payload)
         except Exception as exc:  # pylint: disable=broad-except
             current_app.logger.exception("Ошибка при обращении к OpenAI")
@@ -59,16 +43,8 @@ class OpenAIService:
         return data
 
     # NOTE[agent]: Метод извлекает полезные данные из ответа OpenAI.
-    def extract_message(self, data: dict, log_entry: MessageLog) -> str:
-        """Извлекает текст ответа и количество токенов из ответа API.
-
-        Args:
-            data: Ответ OpenAI API.
-            log_entry: Лог-запись, которую необходимо обновить.
-
-        Returns:
-            Текст ответа модели.
-        """
+    def extract_message(self, *, data: dict, log_entry: MessageLog) -> str:
+        """Извлекает текст ответа и количество токенов."""
 
         choices = data.get("choices", [])
         if not choices:
@@ -100,6 +76,7 @@ class OpenAIService:
                 raise RuntimeError("Не найден файл конфигурации параметров моделей OpenAI") from exc
         return cls._MODEL_PARAM_RULES
 
+    # NOTE[agent]: Метод приводит конфигурацию к допустимому набору параметров.
     def _sanitize_model_config(self, model_config: dict[str, Any]) -> dict[str, Any]:
         """Приводит конфигурацию модели к параметрам, поддерживаемым API."""
 
@@ -131,6 +108,7 @@ class OpenAIService:
             )
         return sanitized
 
+    # NOTE[agent]: Метод выбирает подходящее правило для указанной модели.
     def _resolve_rules_for_model(self, model_name: str) -> dict[str, Any]:
         """Подбирает правила параметров для указанной модели."""
 
