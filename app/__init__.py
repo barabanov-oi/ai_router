@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+import io
 import logging
 import os
+import sys
+from logging import Handler
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Any
+from typing import TextIO
 
 from flask import Flask
 from flask_migrate import Migrate
@@ -76,8 +80,13 @@ def _configure_logging(app: Flask) -> None:
     log_level = os.environ.get("AI_ROUTER_LOG_LEVEL", "INFO").upper()
     app.logger.setLevel(getattr(logging, log_level, logging.INFO))
 
+    preferred_encoding = _get_preferred_log_encoding()
+    _configure_existing_handlers(app.logger.handlers, preferred_encoding, app.logger.level)
+
     if not app.logger.handlers:
-        stream_handler = logging.StreamHandler()
+        stream_handler = logging.StreamHandler(
+            _ensure_stream_encoding(sys.stderr, preferred_encoding),
+        )
         stream_handler.setLevel(app.logger.level)
         formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
         stream_handler.setFormatter(formatter)
@@ -85,7 +94,12 @@ def _configure_logging(app: Flask) -> None:
 
     log_directory = Path("logs")
     log_directory.mkdir(exist_ok=True)
-    file_handler = RotatingFileHandler(log_directory / "app.log", maxBytes=1_000_000, backupCount=5)
+    file_handler = RotatingFileHandler(
+        log_directory / "app.log",
+        maxBytes=1_000_000,
+        backupCount=5,
+        encoding=preferred_encoding,
+    )
     file_handler.setLevel(app.logger.level)
     file_handler.setFormatter(logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s"))
     app.logger.addHandler(file_handler)
@@ -170,3 +184,72 @@ def _register_blueprints(app: Flask) -> None:
     from .web.admin import admin_bp  # Импорт внутри функции для корректного порядка загрузки
 
     app.register_blueprint(admin_bp)
+
+
+def _get_preferred_log_encoding() -> str:
+    """Определяет кодировку логов в зависимости от операционной системы."""
+
+    return "cp1251" if os.name == "nt" else "utf-8"
+
+
+def _configure_existing_handlers(handlers: list[Handler], encoding: str, level: int) -> None:
+    """Обновляет кодировку потоковых обработчиков, созданных Flask ранее."""
+
+    for handler in list(handlers):
+        handler.setLevel(level)
+        if isinstance(handler, logging.StreamHandler):
+            stream = getattr(handler, "stream", None)
+            if stream is not None:
+                handler.setStream(_ensure_stream_encoding(stream, encoding))
+
+
+def _ensure_stream_encoding(stream: TextIO, encoding: str) -> TextIO:
+    """Гарантирует, что переданный поток поддерживает нужную кодировку."""
+
+    current_encoding = getattr(stream, "encoding", None)
+    if current_encoding and current_encoding.lower() == encoding.lower():
+        return stream
+
+    reconfigure = getattr(stream, "reconfigure", None)
+    if callable(reconfigure):
+        reconfigure(encoding=encoding, errors="replace")
+        return stream
+
+    return _EncodingStreamWrapper(stream, encoding)
+
+
+class _EncodingStreamWrapper(io.TextIOBase):
+    """Оборачивает текстовый поток, принудительно перекодируя вывод."""
+
+    def __init__(self, base_stream: TextIO, encoding: str, errors: str = "replace") -> None:
+        self._base_stream = base_stream
+        self._encoding = encoding
+        self._errors = errors
+
+    def write(self, s: str) -> int:  # type: ignore[override]
+        if not isinstance(s, str):
+            s = str(s)
+        data = s.encode(self._encoding, errors=self._errors)
+        buffer = getattr(self._base_stream, "buffer", None)
+        if buffer is not None:
+            buffer.write(data)
+        else:
+            text = data.decode(self._encoding, errors=self._errors)
+            self._base_stream.write(text)
+        return len(s)
+
+    def flush(self) -> None:
+        flush = getattr(self._base_stream, "flush", None)
+        if callable(flush):
+            flush()
+
+    def close(self) -> None:  # type: ignore[override]
+        self.flush()
+
+    @property
+    def encoding(self) -> str:  # type: ignore[override]
+        return self._encoding
+
+    @property
+    def errors(self) -> str:  # type: ignore[override]
+        return self._errors
