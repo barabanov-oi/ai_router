@@ -17,7 +17,7 @@ from flask_migrate import Migrate
 from sqlalchemy.exc import SQLAlchemyError
 
 from .models import db, AppSetting, ModelConfig
-from .services.bot_service import TelegramBotManager
+from .bot.bot_service import TelegramBotManager
 
 
 # NOTE[agent]: Экземпляр мигратора (Alembic через Flask-Migrate).
