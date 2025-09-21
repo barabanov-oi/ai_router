@@ -1,7 +1,17 @@
 """Модели базы данных приложения."""
 
+from sqlalchemy import MetaData
 from flask_sqlalchemy import SQLAlchemy
 
+# NOTE[agent]: Чтобы Alembic всегда генерил имена ограничений/индексов предсказуемо
+convention = {
+    "ix": "ix_%(column_0_label)s",
+    "uq": "uq_%(table_name)s__%(column_0_name)s",
+    "ck": "ck_%(table_name)s__%(constraint_name)s",
+    "fk": "fk_%(table_name)s__%(column_0_name)s__%(referred_table_name)s__%(referred_column_0_name)s",
+    "pk": "pk_%(table_name)s",
+}
+metadata = MetaData(naming_convention=convention)
 # NOTE[agent]: Экземпляр SQLAlchemy используется всеми моделями.
 db = SQLAlchemy()
 

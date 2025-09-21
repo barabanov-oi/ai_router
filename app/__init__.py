@@ -60,8 +60,8 @@ def create_app(config: Optional[Dict[str, Any]] = None) -> Flask:
 
     # NOTE[agent]: Не вызываем db.create_all(); схему меняем через миграции.
     # Инициализацию дефолтных записей выполняем только если таблицы доступны.
-    with app.app_context():
-        _try_seed_defaults(app)
+    # with app.app_context():
+    #     _try_seed_defaults(app)
 
     _register_blueprints(app)
 
