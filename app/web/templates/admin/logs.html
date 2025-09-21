@@ -8,14 +8,21 @@
     gap: 8px;
   }
 
-  .link-button {
-    background: none;
+  .preview-button {
+    background: #40739e;
     border: none;
-    color: #40739e;
+    color: #fff;
     cursor: pointer;
-    padding: 0;
-    font-size: 14px;
-    text-decoration: underline;
+    padding: 6px 12px;
+    font-size: 13px;
+    border-radius: 4px;
+    transition: background 0.2s ease;
+  }
+
+  .preview-button:hover,
+  .preview-button:focus {
+    background: #305a7d;
+    outline: none;
   }
 
   dialog {
@@ -126,7 +133,6 @@
       <th>Ответ</th>
       <th>Токены</th>
       <th>Время запроса</th>
-      <th>Время ответа</th>
     </tr>
   </thead>
   <tbody>
@@ -138,10 +144,10 @@
       <td>
         <div class="preview-cell">
           <span>{{ record.user_message_preview }}</span>
-          {% if record.user_message_present %}
+          {% if record.user_message_truncated %}
           <button
             type="button"
-            class="link-button show-full-text"
+            class="preview-button show-full-text"
             data-title="Сообщение пользователя #{{ record.id }}"
             data-full-text="{{ record.user_message_full | e }}"
           >Показать полностью</button>
@@ -151,10 +157,10 @@
       <td>
         <div class="preview-cell">
           <span>{{ record.llm_response_preview }}</span>
-          {% if record.llm_response_present %}
+          {% if record.llm_response_truncated %}
           <button
             type="button"
-            class="link-button show-full-text"
+            class="preview-button show-full-text"
             data-title="Ответ LLM #{{ record.id }}"
             data-full-text="{{ record.llm_response_full | e }}"
           >Показать полностью</button>
@@ -163,7 +169,6 @@
       </td>
       <td>{{ record.tokens_used }}</td>
       <td>{{ record.created_at }}</td>
-      <td>{{ record.responded_at or '—' }}</td>
     </tr>
     {% endfor %}
   </tbody>

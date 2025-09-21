@@ -172,6 +172,10 @@ def logs() -> str:
     for record in records:
         user_preview, has_user_text, user_truncated, user_full = _make_preview(record.user_message)
         llm_preview, has_llm_text, llm_truncated, llm_full = _make_preview(record.llm_response)
+        created_at_value = record.created_at
+        created_at_formatted = "—"
+        if isinstance(created_at_value, datetime):
+            created_at_formatted = created_at_value.strftime("%H.%M.%Y")
         message_rows.append(
             {
                 "id": record.id,
@@ -186,8 +190,7 @@ def logs() -> str:
                 "llm_response_present": has_llm_text,
                 "llm_response_truncated": llm_truncated,
                 "tokens_used": record.tokens_used,
-                "created_at": record.created_at,
-                "responded_at": record.responded_at,
+                "created_at": created_at_formatted,
             }
         )
     return render_template(
