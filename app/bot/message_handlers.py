@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+from typing import List
+
 from telebot import TeleBot, types
 
 from ..models import Dialog, MessageLog, db
-from .bot_modes import MODE_DEFINITIONS
 
 
 class MessageHandlingMixin:
@@ -31,20 +32,6 @@ class MessageHandlingMixin:
             with self._app_context():
                 self._handle_help(message)
 
-        @bot.message_handler(commands=["settings"])
-        def handle_settings(message: types.Message) -> None:
-            """Обрабатывает команду /settings."""
-
-            with self._app_context():
-                self._handle_settings(message)
-
-        @bot.callback_query_handler(func=lambda call: call.data.startswith("mode:"))
-        def handle_mode_change(call: types.CallbackQuery) -> None:
-            """Реагирует на выбор режима ответа."""
-
-            with self._app_context():
-                self._handle_mode_change(call)
-
         @bot.callback_query_handler(func=lambda call: call.data == "dialog:new")
         def handle_new_dialog(call: types.CallbackQuery) -> None:
             """Сбрасывает текущий контекст диалога."""
@@ -68,7 +55,7 @@ class MessageHandlingMixin:
         user = self._get_or_create_user(message.from_user)
         text = (
             "Привет! Я помощник LLM. Задайте вопрос, и я постараюсь помочь.\n"
-            "Используйте /help для справки и /settings для выбора режима."
+            "Используйте /help для справки."
         )
         if self._bot:
             self._bot.send_message(chat_id=message.chat.id, text=text)
@@ -82,39 +69,59 @@ class MessageHandlingMixin:
             "Доступные команды:\n"
             "/start — начать работу\n"
             "/help — показать эту справку\n"
-            "/settings — выбрать режим ответов\n"
             "Кнопка 'Начать новый диалог' завершает текущий диалог и очищает контекст."
         )
         if self._bot:
             self._bot.send_message(chat_id=message.chat.id, text=help_text)
 
-    # NOTE[agent]: Отображение настроек и inline-клавиатуры выбора режима.
-    def _handle_settings(self, message: types.Message) -> None:
-        """Показывает пользователю доступные режимы работы."""
+    # NOTE[agent]: Разбивает ответ ассистента на части для обхода лимитов Telegram.
+    def _prepare_response_chunks(self, text: str) -> List[str]:
+        """Делит ответ LLM на части с учётом ограничений Telegram."""
 
-        user = self._get_or_create_user(message.from_user)
-        keyboard = types.InlineKeyboardMarkup()
-        for mode_key, definition in MODE_DEFINITIONS.items():
-            title = definition["title"]
-            prefix = "✅ " if user.preferred_mode == mode_key else ""
-            keyboard.add(types.InlineKeyboardButton(text=f"{prefix}{title}", callback_data=f"mode:{mode_key}"))
-        if self._bot:
-            self._bot.send_message(chat_id=message.chat.id, text="Выберите режим работы:", reply_markup=keyboard)
+        if len(text) <= 4096:
+            return [text]
 
-    # NOTE[agent]: Обработка выбора режима пользователем.
-    def _handle_mode_change(self, call: types.CallbackQuery) -> None:
-        """Сохраняет выбранный режим и уведомляет пользователя."""
+        chunks: List[str] = []
+        remaining = text
+        continuation = "..."
+        first_chunk = True
 
-        mode = call.data.split(":", maxsplit=1)[1]
-        user = self._get_or_create_user(call.from_user)
-        user.preferred_mode = mode if mode in MODE_DEFINITIONS else "default"
-        db.session.commit()
-        if self._bot:
-            self._bot.answer_callback_query(call.id, text="Режим обновлён")
-            self._bot.send_message(
-                chat_id=call.message.chat.id,
-                text=f"Новый режим: {MODE_DEFINITIONS[user.preferred_mode]['title']}",
-            )
+        while remaining:
+            if first_chunk:
+                needs_split = len(remaining) > 4096
+                suffix = continuation if needs_split else ""
+                available = 4096 - len(suffix)
+                prefix = ""
+            else:
+                needs_split = len(remaining) > (4096 - len(continuation))
+                prefix = continuation
+                suffix = continuation if needs_split else ""
+                available = 4096 - len(prefix) - len(suffix)
+
+            if available <= 0:
+                available = 4096
+                prefix = ""
+                suffix = ""
+
+            if len(remaining) <= available:
+                core = remaining
+                remaining = ""
+            else:
+                core = remaining[:available]
+                split_pos = core.rfind(" ")
+                if split_pos <= 0:
+                    split_pos = available
+                core = core[:split_pos].rstrip()
+                remaining = remaining[split_pos:].lstrip()
+
+            chunk = f"{prefix}{core}{suffix}"
+            chunks.append(chunk)
+            first_chunk = False
+
+            if not remaining:
+                break
+
+        return chunks
 
     # NOTE[agent]: Завершение текущего диалога и создание нового.
     def _handle_new_dialog(self, call: types.CallbackQuery) -> None:
@@ -168,7 +175,10 @@ class MessageHandlingMixin:
             response_text = self._query_llm(dialog, log_entry)
             reply_markup = self._build_inline_keyboard()
             if self._bot:
-                self._bot.send_message(chat_id=message.chat.id, text=response_text, reply_markup=reply_markup)
+                chunks = self._prepare_response_chunks(response_text)
+                for index, chunk in enumerate(chunks):
+                    markup = reply_markup if index == len(chunks) - 1 else None
+                    self._bot.send_message(chat_id=message.chat.id, text=chunk, reply_markup=markup)
         except Exception as exc:  # pylint: disable=broad-except
             self._get_logger().exception("Ошибка при обращении к LLM")
             if self._bot:

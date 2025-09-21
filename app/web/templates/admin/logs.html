@@ -1,6 +1,73 @@
 {% extends 'admin/base.html' %}
 {% block title %}Логи — AI Router{% endblock %}
 {% block content %}
+<style>
+  .preview-cell {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .link-button {
+    background: none;
+    border: none;
+    color: #40739e;
+    cursor: pointer;
+    padding: 0;
+    font-size: 14px;
+    text-decoration: underline;
+  }
+
+  dialog {
+    border: none;
+    border-radius: 8px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.25);
+    max-width: 640px;
+    width: 90%;
+    padding: 0;
+  }
+
+  dialog::backdrop {
+    background: rgba(0, 0, 0, 0.45);
+  }
+
+  .modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 20px;
+    border-bottom: 1px solid #ecf0f1;
+  }
+
+  .modal-header h3 {
+    margin: 0;
+    font-size: 18px;
+  }
+
+  .modal-body {
+    padding: 20px;
+    max-height: 60vh;
+    overflow-y: auto;
+  }
+
+  .modal-body pre {
+    margin: 0;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    font-family: inherit;
+    font-size: 14px;
+  }
+
+  .modal-close {
+    background: none;
+    border: none;
+    font-size: 24px;
+    line-height: 1;
+    cursor: pointer;
+    color: #718093;
+  }
+</style>
+
 <h2>Логи диалогов</h2>
 <form class="filters" method="get">
   <div class="form-row">
@@ -63,13 +130,37 @@
     </tr>
   </thead>
   <tbody>
-    {% for record in records %}
+    {% for record in message_rows %}
     <tr>
       <td>{{ record.id }}</td>
       <td>{{ record.dialog_id }}</td>
-      <td>{{ record.user.username or record.user.telegram_id }}</td>
-      <td>{{ record.user_message }}</td>
-      <td>{{ record.llm_response or '—' }}</td>
+      <td>{{ record.username }}</td>
+      <td>
+        <div class="preview-cell">
+          <span>{{ record.user_message_preview }}</span>
+          {% if record.user_message_present %}
+          <button
+            type="button"
+            class="link-button show-full-text"
+            data-title="Сообщение пользователя #{{ record.id }}"
+            data-full-text="{{ record.user_message_full | e }}"
+          >Показать полностью</button>
+          {% endif %}
+        </div>
+      </td>
+      <td>
+        <div class="preview-cell">
+          <span>{{ record.llm_response_preview }}</span>
+          {% if record.llm_response_present %}
+          <button
+            type="button"
+            class="link-button show-full-text"
+            data-title="Ответ LLM #{{ record.id }}"
+            data-full-text="{{ record.llm_response_full | e }}"
+          >Показать полностью</button>
+          {% endif %}
+        </div>
+      </td>
       <td>{{ record.tokens_used }}</td>
       <td>{{ record.created_at }}</td>
       <td>{{ record.responded_at or '—' }}</td>
@@ -77,4 +168,56 @@
     {% endfor %}
   </tbody>
 </table>
+
+<dialog id="text-modal">
+  <div class="modal-header">
+    <h3 class="modal-title">Полный текст</h3>
+    <button type="button" class="modal-close" data-close>&times;</button>
+  </div>
+  <div class="modal-body">
+    <pre class="modal-content"></pre>
+  </div>
+</dialog>
+
+<script>
+  (function () {
+    const modal = document.getElementById('text-modal');
+    if (!modal) {
+      return;
+    }
+
+    const titleEl = modal.querySelector('.modal-title');
+    const contentEl = modal.querySelector('.modal-content');
+    const closeBtn = modal.querySelector('[data-close]');
+
+    const closeModal = () => {
+      if (typeof modal.close === 'function') {
+        modal.close();
+      }
+    };
+
+    closeBtn.addEventListener('click', closeModal);
+
+    modal.addEventListener('cancel', (event) => {
+      event.preventDefault();
+      closeModal();
+    });
+
+    document.querySelectorAll('.show-full-text').forEach((button) => {
+      button.addEventListener('click', () => {
+        const title = button.dataset.title || 'Полный текст';
+        const fullText = button.dataset.fullText || '';
+        if (titleEl) {
+          titleEl.textContent = title;
+        }
+        if (contentEl) {
+          contentEl.textContent = fullText;
+        }
+        if (typeof modal.showModal === 'function') {
+          modal.showModal();
+        }
+      });
+    });
+  })();
+</script>
 {% endblock %}

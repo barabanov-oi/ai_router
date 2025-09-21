@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from flask import Blueprint, Response, current_app, jsonify, redirect, render_template, request, url_for
 
@@ -151,14 +151,48 @@ def logs() -> str:
                 "is_active": row.is_active,
             }
         )
+    # NOTE[agent]: Функция формирует краткое представление текста для таблицы логов.
+    def _make_preview(text: Optional[str]) -> Tuple[str, bool, bool, str]:
+        """Возвращает укороченную версию текста и метаданные для отображения."""
+
+        if not text:
+            return "—", False, False, ""
+        preview_limit = 150
+        is_long = len(text) > preview_limit
+        preview = text if not is_long else f"{text[:preview_limit]}..."
+        return preview, True, is_long, text
+
     records = (
         MessageLog.query.order_by(MessageLog.created_at.desc())
         .limit(limit)
         .all()
     )
+
+    message_rows: List[Dict[str, Any]] = []
+    for record in records:
+        user_preview, has_user_text, user_truncated, user_full = _make_preview(record.user_message)
+        llm_preview, has_llm_text, llm_truncated, llm_full = _make_preview(record.llm_response)
+        message_rows.append(
+            {
+                "id": record.id,
+                "dialog_id": record.dialog_id,
+                "username": record.user.username or record.user.telegram_id or "—",
+                "user_message_preview": user_preview,
+                "user_message_full": user_full,
+                "user_message_present": has_user_text,
+                "user_message_truncated": user_truncated,
+                "llm_response_preview": llm_preview,
+                "llm_response_full": llm_full,
+                "llm_response_present": has_llm_text,
+                "llm_response_truncated": llm_truncated,
+                "tokens_used": record.tokens_used,
+                "created_at": record.created_at,
+                "responded_at": record.responded_at,
+            }
+        )
     return render_template(
         "admin/logs.html",
-        records=records,
+        message_rows=message_rows,
         limit=limit,
         dialog_logs=dialog_logs,
         dialog_limit=dialog_limit,
