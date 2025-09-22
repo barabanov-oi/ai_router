@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import threading
+
 from typing import List
 
 from telebot import TeleBot, types
@@ -240,8 +242,34 @@ class MessageHandlingMixin:
         user.touch()
         db.session.commit()
 
+        typing_stop_event: threading.Event | None = None
+        typing_thread: threading.Thread | None = None
         if self._bot:
             self._bot.send_chat_action(message.chat.id, "typing")
+
+            typing_stop_event = threading.Event()
+
+            def _keep_typing_indicator() -> None:
+                """Периодически отправляет действие "typing", пока запрос выполняется."""
+
+                # NOTE[agent]: Фоновая задача поддерживает индикацию набора текста.
+                while not typing_stop_event.wait(4.0):
+                    try:
+                        if not self._bot:
+                            break
+                        self._bot.send_chat_action(message.chat.id, "typing")
+                    except Exception:  # pylint: disable=broad-except
+                        self._get_logger().debug(
+                            "Не удалось обновить индикацию набора текста", exc_info=True
+                        )
+                        break
+
+            typing_thread = threading.Thread(
+                target=_keep_typing_indicator,
+                name="telegram-typing-indicator",
+                daemon=True,
+            )
+            typing_thread.start()
         try:
             response_text = self._query_llm(dialog, log_entry)
             reply_markup = self._build_inline_keyboard()
@@ -263,3 +291,8 @@ class MessageHandlingMixin:
                     text=f"Произошла ошибка: {exc}",
                     parse_mode="Markdown",
                 )
+        finally:
+            if typing_stop_event:
+                typing_stop_event.set()
+            if typing_thread:
+                typing_thread.join(timeout=2.0)
