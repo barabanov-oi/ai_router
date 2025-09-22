@@ -142,6 +142,9 @@ class DialogManagementMixin:
         """Формирует текстовое название диалога для кнопок истории."""
 
         base_title = (dialog.title or "").strip()
+        placeholder_titles = {"диалог", "новый диалог", "dialog", "new dialog"}
+        if base_title and base_title.lower() in placeholder_titles:
+            base_title = ""
         if not base_title:
             first_log = (
                 MessageLog.query.filter_by(dialog_id=dialog.id)
@@ -195,23 +198,26 @@ class DialogManagementMixin:
             f"(вопрос: {prompt_total}, ответ: {completion_total})"
         )
 
-    # NOTE[agent]: Строит ссылку на последнее сообщение диалога.
-    def _build_dialog_link(self, dialog: Dialog) -> Optional[str]:
-        """Возвращает deep-link на последнее сообщение диалога, если возможно."""
+    # NOTE[agent]: Определяет, как сослаться на последнее сообщение диалога.
+    def _get_last_message_reference(self, dialog: Dialog) -> Tuple[Optional[int], Optional[str]]:
+        """Возвращает идентификатор сообщения и текст последнего сообщения."""
 
         if not dialog.telegram_chat_id:
-            return None
+            return None, None
         last_log = (
             MessageLog.query.filter_by(dialog_id=dialog.id)
             .order_by(MessageLog.message_index.desc())
             .first()
         )
         if not last_log:
-            return None
+            return None, None
         target_message_id = last_log.assistant_message_id or last_log.user_message_id
-        if not target_message_id:
-            return None
-        return f"tg://openmessage?chat_id={dialog.telegram_chat_id}&message_id={target_message_id}"
+        if target_message_id:
+            return target_message_id, None
+        last_text = last_log.llm_response or last_log.user_message
+        if last_text:
+            return None, last_text[-150:]
+        return None, None
 
     # NOTE[agent]: Комбинация настроек модели с параметрами режима.
     def _get_model_config(self, mode_definition: dict) -> Tuple[ModelConfig, dict, Optional[str]]:

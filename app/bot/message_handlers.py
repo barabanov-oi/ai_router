@@ -267,19 +267,27 @@ class MessageHandlingMixin:
         if not target_dialog.telegram_chat_id:
             target_dialog.telegram_chat_id = str(call.message.chat.id)
         self._activate_dialog(user, target_dialog)
-        link = self._build_dialog_link(target_dialog)
+        reply_message_id, last_text = self._get_last_message_reference(target_dialog)
         title = self._format_dialog_title(target_dialog).lstrip("• ")
-        if link:
-            message_text = (
-                f"Переключаюсь на диалог «{title}».\n"
-                f"Перейти к последнему сообщению: {link}"
+        base_text = f"Переключаюсь на диалог «{title}»."
+        reply_markup = self._build_inline_keyboard()
+        if reply_message_id is not None:
+            self._bot.send_message(
+                chat_id=call.message.chat.id,
+                text=base_text,
+                reply_markup=reply_markup,
+                reply_to_message_id=reply_message_id,
             )
+            return
+        snippet = last_text or ""
+        if snippet:
+            message_text = f"{base_text}\nПоследнее сообщение: {snippet}"
         else:
-            message_text = f"Переключаюсь на диалог «{title}». Последнее сообщение не найдено."
+            message_text = f"{base_text}\nПоследнее сообщение не найдено."
         self._bot.send_message(
             chat_id=call.message.chat.id,
             text=message_text,
-            reply_markup=self._build_inline_keyboard(),
+            reply_markup=reply_markup,
         )
 
     # NOTE[agent]: Основная обработка текстового сообщения.
