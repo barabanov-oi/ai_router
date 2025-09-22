@@ -57,8 +57,13 @@ class OpenAIProviderClient(BaseProviderClient):
             raise RuntimeError("Ответ OpenAI не содержит вариантов")
         message = self._strip_think_tags(choices[0]["message"].get("content"))
         usage = data.get("usage", {})
-        tokens_used = int(usage.get("total_tokens", usage.get("completion_tokens", 0)))
-        log_entry.register_response(message, tokens_used)
+        prompt_tokens = int(usage.get("prompt_tokens") or 0)
+        completion_tokens = int(usage.get("completion_tokens") or 0)
+        if not prompt_tokens and not completion_tokens:
+            total_tokens = int(usage.get("total_tokens") or 0)
+            prompt_tokens = total_tokens
+            completion_tokens = 0
+        log_entry.register_response(message, prompt_tokens, completion_tokens)
         db.session.commit()
         return message
 

@@ -286,6 +286,7 @@ def manage_models() -> Union[Response, str]:
 
         temperature = _float("temperature", 1.0)
         max_tokens = _int("max_tokens", 512)
+        dialog_token_limit = _int("dialog_token_limit", 20000)
         top_p = _float("top_p", 1.0)
         is_default = request.form.get("is_default") == "on"
         provider_id_raw = request.form.get("provider_id")
@@ -308,6 +309,7 @@ def manage_models() -> Union[Response, str]:
                 provider=provider,
                 temperature=temperature,
                 max_tokens=max_tokens,
+                dialog_token_limit=dialog_token_limit,
                 top_p=top_p,
                 system_instruction=instruction,
                 is_default=is_default,
@@ -334,6 +336,7 @@ def manage_models() -> Union[Response, str]:
                     model_obj.provider = provider
                 model_obj.temperature = temperature
                 model_obj.max_tokens = max_tokens
+                model_obj.dialog_token_limit = dialog_token_limit
                 model_obj.top_p = top_p
                 model_obj.system_instruction = instruction
                 if is_default:

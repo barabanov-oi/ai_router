@@ -17,6 +17,7 @@ class Dialog(db.Model):
     is_active = db.Column(db.Boolean, default=True, nullable=False)
     started_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     ended_at = db.Column(db.DateTime, nullable=True)
+    telegram_chat_id = db.Column(db.String(64), nullable=True)
 
     messages = db.relationship("MessageLog", backref="dialog", lazy=True)
 

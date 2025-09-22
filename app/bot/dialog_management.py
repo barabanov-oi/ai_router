@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
-from typing import Dict, Iterable, Optional, Tuple
+from datetime import datetime
+from typing import Dict, Iterable, List, Optional, Tuple
 
 from telebot import types
+from sqlalchemy import func
 
 from ..models import Dialog, MessageLog, ModelConfig, User, db
 from .bot_modes import MODE_DEFINITIONS
@@ -44,6 +46,7 @@ class DialogManagementMixin:
         mode = MODE_DEFINITIONS.get(log_entry.mode, MODE_DEFINITIONS["default"])
         model, model_payload, system_instruction = self._get_model_config(mode)
         messages = list(self._build_provider_messages(dialog, log_entry, system_instruction))
+        log_entry.model_id = model.id
         return self._llm.complete_chat(
             model=model,
             payload=model_payload,
@@ -53,10 +56,32 @@ class DialogManagementMixin:
 
     # NOTE[agent]: Создаёт inline-клавиатуру для управления диалогом.
     def _build_inline_keyboard(self) -> types.InlineKeyboardMarkup:
-        """Возвращает клавиатуру с кнопкой нового диалога."""
+        """Возвращает клавиатуру управления диалогами."""
 
-        keyboard = types.InlineKeyboardMarkup()
-        keyboard.add(types.InlineKeyboardButton(text="Начать новый диалог", callback_data="dialog:new"))
+        keyboard = types.InlineKeyboardMarkup(row_width=2)
+        keyboard.add(
+            types.InlineKeyboardButton(text="Новый диалог", callback_data="dialog:new"),
+            types.InlineKeyboardButton(text="История диалогов", callback_data="dialog:history"),
+        )
+        return keyboard
+
+    # NOTE[agent]: Формирование клавиатуры истории диалогов.
+    def _build_history_keyboard(self, user: User, limit: int = 5) -> types.InlineKeyboardMarkup:
+        """Создаёт клавиатуру с последними диалогами пользователя."""
+
+        dialogs = self._get_recent_dialogs(user=user, limit=limit)
+        keyboard = types.InlineKeyboardMarkup(row_width=1)
+        for dialog in dialogs:
+            title = self._format_dialog_title(dialog)
+            keyboard.add(
+                types.InlineKeyboardButton(
+                    text=title,
+                    callback_data=f"dialog:switch:{dialog.id}",
+                )
+            )
+        keyboard.add(
+            types.InlineKeyboardButton(text="Новый диалог", callback_data="dialog:new"),
+        )
         return keyboard
 
     # NOTE[agent]: Получение или создание пользователя в базе.
@@ -86,6 +111,107 @@ class DialogManagementMixin:
         """Возвращает текущий активный диалог пользователя."""
 
         return Dialog.query.filter_by(user_id=user.id, is_active=True).order_by(Dialog.started_at.desc()).first()
+
+    # NOTE[agent]: Возвращает последние диалоги пользователя.
+    def _get_recent_dialogs(self, user: User, limit: int = 5) -> List[Dialog]:
+        """Отбирает последние диалоги пользователя по дате создания."""
+
+        return (
+            Dialog.query.filter_by(user_id=user.id)
+            .order_by(Dialog.started_at.desc())
+            .limit(limit)
+            .all()
+        )
+
+    # NOTE[agent]: Обновляет активный диалог пользователя.
+    def _activate_dialog(self, user: User, dialog: Dialog) -> None:
+        """Ставит указанный диалог активным и завершает остальные."""
+
+        active_dialogs = Dialog.query.filter_by(user_id=user.id, is_active=True).all()
+        for active in active_dialogs:
+            if active.id == dialog.id:
+                continue
+            active.is_active = False
+            active.ended_at = datetime.utcnow()
+        dialog.is_active = True
+        dialog.ended_at = None
+        db.session.commit()
+
+    # NOTE[agent]: Возвращает краткое название диалога.
+    def _format_dialog_title(self, dialog: Dialog) -> str:
+        """Формирует текстовое название диалога для кнопок истории."""
+
+        base_title = (dialog.title or "").strip()
+        if not base_title:
+            first_log = (
+                MessageLog.query.filter_by(dialog_id=dialog.id)
+                .order_by(MessageLog.message_index.asc())
+                .first()
+            )
+            base_title = (first_log.user_message if first_log else f"Диалог #{dialog.id}") or ""
+        prepared = " ".join(base_title.split())
+        if len(prepared) > 40:
+            prepared = f"{prepared[:40]}…"
+        if dialog.is_active:
+            return f"• {prepared}"
+        return prepared or f"Диалог #{dialog.id}"
+
+    # NOTE[agent]: Подсчитывает накопленное использование токенов.
+    def _calculate_dialog_usage(self, dialog: Dialog, model_id: int) -> Tuple[int, int, int]:
+        """Возвращает суммарные input/output/total токены в диалоге."""
+
+        prompt_sum, completion_sum, total_sum = (
+            db.session.query(
+                func.coalesce(func.sum(MessageLog.prompt_tokens), 0),
+                func.coalesce(func.sum(MessageLog.completion_tokens), 0),
+                func.coalesce(func.sum(MessageLog.tokens_used), 0),
+            )
+            .filter(
+                MessageLog.dialog_id == dialog.id,
+                MessageLog.model_id == model_id,
+            )
+            .one()
+        )
+        return int(prompt_sum), int(completion_sum), int(total_sum)
+
+    # NOTE[agent]: Формирует строку с информацией об использовании токенов.
+    def _format_usage_summary(self, dialog: Dialog, log_entry: MessageLog) -> str:
+        """Возвращает текст с информацией об израсходованных токенах."""
+
+        if not log_entry.model_id:
+            total_limit = 20000
+            prompt_total = log_entry.prompt_tokens
+            completion_total = log_entry.completion_tokens
+            total_tokens = log_entry.tokens_used
+        else:
+            prompt_total, completion_total, total_tokens = self._calculate_dialog_usage(
+                dialog, log_entry.model_id
+            )
+            limit_source = log_entry.model.dialog_token_limit if log_entry.model else None
+            total_limit = limit_source or 20000
+        return (
+            "Использовано токенов: "
+            f"{total_tokens} / {total_limit} "
+            f"(вопрос: {prompt_total}, ответ: {completion_total})"
+        )
+
+    # NOTE[agent]: Строит ссылку на последнее сообщение диалога.
+    def _build_dialog_link(self, dialog: Dialog) -> Optional[str]:
+        """Возвращает deep-link на последнее сообщение диалога, если возможно."""
+
+        if not dialog.telegram_chat_id:
+            return None
+        last_log = (
+            MessageLog.query.filter_by(dialog_id=dialog.id)
+            .order_by(MessageLog.message_index.desc())
+            .first()
+        )
+        if not last_log:
+            return None
+        target_message_id = last_log.assistant_message_id or last_log.user_message_id
+        if not target_message_id:
+            return None
+        return f"tg://openmessage?chat_id={dialog.telegram_chat_id}&message_id={target_message_id}"
 
     # NOTE[agent]: Комбинация настроек модели с параметрами режима.
     def _get_model_config(self, mode_definition: dict) -> Tuple[ModelConfig, dict, Optional[str]]:

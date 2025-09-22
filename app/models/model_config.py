@@ -22,6 +22,7 @@ class ModelConfig(db.Model):
     presence_penalty = db.Column(db.Float, default=0.0, nullable=False)
     system_instruction = db.Column(db.Text, nullable=True)
     is_default = db.Column(db.Boolean, default=False, nullable=False)
+    dialog_token_limit = db.Column(db.Integer, default=20000, nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
     provider = db.relationship("LLMProvider", back_populates="models")

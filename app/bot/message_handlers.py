@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import threading
 
-from typing import List
+from typing import List, Optional
 
 from telebot import TeleBot, types
 
@@ -50,6 +50,20 @@ class MessageHandlingMixin:
 
             with self._app_context():
                 self._handle_new_dialog(call)
+
+        @bot.callback_query_handler(func=lambda call: call.data == "dialog:history")
+        def handle_dialog_history(call: types.CallbackQuery) -> None:
+            """Отображает список последних диалогов пользователя."""
+
+            with self._app_context():
+                self._handle_dialog_history(call)
+
+        @bot.callback_query_handler(func=lambda call: call.data.startswith("dialog:switch:"))
+        def handle_dialog_switch(call: types.CallbackQuery) -> None:
+            """Переключает активный диалог пользователя."""
+
+            with self._app_context():
+                self._handle_switch_dialog(call)
 
         @bot.message_handler(
             content_types=["text"],
@@ -199,7 +213,11 @@ class MessageHandlingMixin:
         current_dialog = self._get_active_dialog(user)
         if current_dialog:
             current_dialog.close()
-        new_dialog = Dialog(user_id=user.id, title="Новый диалог")
+        new_dialog = Dialog(
+            user_id=user.id,
+            title="Новый диалог",
+            telegram_chat_id=str(call.message.chat.id),
+        )
         db.session.add(new_dialog)
         db.session.commit()
         if self._bot:
@@ -208,7 +226,61 @@ class MessageHandlingMixin:
                 chat_id=call.message.chat.id,
                 text="Контекст очищен. Продолжайте беседу.",
                 parse_mode="Markdown",
+                reply_markup=self._build_inline_keyboard(),
             )
+
+    # NOTE[agent]: Обработчик вызова истории диалогов.
+    def _handle_dialog_history(self, call: types.CallbackQuery) -> None:
+        """Отправляет пользователю клавиатуру с историей диалогов."""
+
+        user = self._get_or_create_user(call.from_user)
+        if not self._bot:
+            return
+        dialogs = self._get_recent_dialogs(user)
+        if not dialogs:
+            self._bot.answer_callback_query(call.id, text="История пуста")
+            return
+        history_keyboard = self._build_history_keyboard(user)
+        self._bot.answer_callback_query(call.id)
+        self._bot.send_message(
+            chat_id=call.message.chat.id,
+            text="Выберите диалог из истории:",
+            reply_markup=history_keyboard,
+        )
+
+    # NOTE[agent]: Обработчик переключения активного диалога.
+    def _handle_switch_dialog(self, call: types.CallbackQuery) -> None:
+        """Переключает пользователя на выбранный диалог из истории."""
+
+        if not self._bot:
+            return
+        self._bot.answer_callback_query(call.id)
+        user = self._get_or_create_user(call.from_user)
+        dialog_id = self._extract_dialog_id(call.data)
+        if dialog_id is None:
+            self._bot.send_message(chat_id=call.message.chat.id, text="Не удалось определить диалог")
+            return
+        target_dialog = Dialog.query.filter_by(id=dialog_id, user_id=user.id).first()
+        if not target_dialog:
+            self._bot.send_message(chat_id=call.message.chat.id, text="Диалог не найден")
+            return
+        if not target_dialog.telegram_chat_id:
+            target_dialog.telegram_chat_id = str(call.message.chat.id)
+        self._activate_dialog(user, target_dialog)
+        link = self._build_dialog_link(target_dialog)
+        title = self._format_dialog_title(target_dialog).lstrip("• ")
+        if link:
+            message_text = (
+                f"Переключаюсь на диалог «{title}».\n"
+                f"Перейти к последнему сообщению: {link}"
+            )
+        else:
+            message_text = f"Переключаюсь на диалог «{title}». Последнее сообщение не найдено."
+        self._bot.send_message(
+            chat_id=call.message.chat.id,
+            text=message_text,
+            reply_markup=self._build_inline_keyboard(),
+        )
 
     # NOTE[agent]: Основная обработка текстового сообщения.
     def _handle_message(self, message: types.Message) -> None:
@@ -226,9 +298,15 @@ class MessageHandlingMixin:
 
         dialog = self._get_active_dialog(user)
         if not dialog:
-            dialog = Dialog(user_id=user.id, title="Диалог")
+            dialog = Dialog(
+                user_id=user.id,
+                title="Диалог",
+                telegram_chat_id=str(message.chat.id),
+            )
             db.session.add(dialog)
             db.session.commit()
+        elif not dialog.telegram_chat_id:
+            dialog.telegram_chat_id = str(message.chat.id)
 
         message_index = MessageLog.query.filter_by(dialog_id=dialog.id).count() + 1
         log_entry = MessageLog(
@@ -237,9 +315,12 @@ class MessageHandlingMixin:
             message_index=message_index,
             user_message=message.text,
             mode=user.preferred_mode,
+            user_message_id=message.message_id,
         )
         db.session.add(log_entry)
         user.touch()
+        if message_index == 1 and message.text:
+            dialog.title = " ".join(message.text.split())[:255]
         db.session.commit()
 
         typing_stop_event: threading.Event | None = None
@@ -272,17 +353,26 @@ class MessageHandlingMixin:
             typing_thread.start()
         try:
             response_text = self._query_llm(dialog, log_entry)
+            db.session.refresh(log_entry)
+            usage_summary = self._format_usage_summary(dialog, log_entry)
+            response_with_usage = f"{response_text}\n\n{usage_summary}" if response_text else usage_summary
             reply_markup = self._build_inline_keyboard()
             if self._bot:
-                chunks = self._prepare_response_chunks(response_text)
+                chunks = self._prepare_response_chunks(response_with_usage)
+                last_message_id: Optional[int] = None
                 for index, chunk in enumerate(chunks):
                     markup = reply_markup if index == len(chunks) - 1 else None
-                    self._bot.send_message(
+                    sent = self._bot.send_message(
                         chat_id=message.chat.id,
                         text=chunk,
                         reply_markup=markup,
                         parse_mode="Markdown",
                     )
+                    if markup is not None:
+                        last_message_id = getattr(sent, "message_id", None)
+                if last_message_id is not None:
+                    log_entry.assistant_message_id = last_message_id
+                    db.session.commit()
         except Exception as exc:  # pylint: disable=broad-except
             self._get_logger().exception("Ошибка при обращении к LLM")
             if self._bot:
@@ -296,3 +386,16 @@ class MessageHandlingMixin:
                 typing_stop_event.set()
             if typing_thread:
                 typing_thread.join(timeout=2.0)
+
+    def _extract_dialog_id(self, payload: Optional[str]) -> Optional[int]:
+        """Извлекает идентификатор диалога из callback-данных."""
+
+        if not payload:
+            return None
+        parts = payload.split(":")
+        if len(parts) != 3:
+            return None
+        try:
+            return int(parts[-1])
+        except ValueError:
+            return None

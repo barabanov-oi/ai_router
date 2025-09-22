@@ -17,6 +17,7 @@
       <th>Модель</th>
       <th>Temperature</th>
       <th>Max tokens</th>
+      <th>Лимит токенов на диалог</th>
       <th>Инструкция</th>
       <th>Активная</th>
     </tr>
@@ -37,6 +38,7 @@
       <td>{{ model.model }}</td>
       <td>{{ model.temperature }}</td>
       <td>{{ model.max_tokens }}</td>
+      <td>{{ model.dialog_token_limit }}</td>
       <td>
         {% if model.system_instruction %}
           {{ model.system_instruction[:40] ~ ('…' if model.system_instruction|length > 40 else '') }}
@@ -79,6 +81,9 @@
       <label>Max tokens
         <input type="number" name="max_tokens" value="{{ model.max_tokens }}">
       </label>
+      <label>Лимит токенов на диалог
+        <input type="number" name="dialog_token_limit" value="{{ model.dialog_token_limit }}">
+      </label>
       <label>Top P
         <input type="number" step="0.1" name="top_p" value="{{ model.top_p }}">
       </label>
@@ -118,6 +123,9 @@
   </label>
   <label>Max tokens
     <input type="number" name="max_tokens" value="512">
+  </label>
+  <label>Лимит токенов на диалог
+    <input type="number" name="dialog_token_limit" value="20000">
   </label>
   <label>Top P
     <input type="number" step="0.1" name="top_p" value="1.0">
