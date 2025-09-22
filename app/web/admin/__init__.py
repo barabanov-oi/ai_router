@@ -103,6 +103,8 @@ def logs() -> str:
             MessageLog.dialog_id.label("dialog_id"),
             func.count(MessageLog.id).label("message_count"),
             func.coalesce(func.sum(MessageLog.tokens_used), 0).label("tokens_spent"),
+            func.coalesce(func.sum(MessageLog.prompt_tokens), 0).label("prompt_tokens_spent"),
+            func.coalesce(func.sum(MessageLog.completion_tokens), 0).label("completion_tokens_spent"),
         )
         .group_by(MessageLog.dialog_id)
         .subquery()
@@ -123,6 +125,8 @@ def logs() -> str:
             User.telegram_id,
             func.coalesce(message_stats.c.message_count, 0).label("message_count"),
             func.coalesce(message_stats.c.tokens_spent, 0).label("tokens_spent"),
+            func.coalesce(message_stats.c.prompt_tokens_spent, 0).label("prompt_tokens_spent"),
+            func.coalesce(message_stats.c.completion_tokens_spent, 0).label("completion_tokens_spent"),
             first_message_subquery.label("first_message"),
         )
         .join(User, Dialog.user_id == User.id)
@@ -147,6 +151,8 @@ def logs() -> str:
                 "full_title": base_title,
                 "message_count": int(row.message_count or 0),
                 "tokens_spent": int(row.tokens_spent or 0),
+                "input_tokens": int(row.prompt_tokens_spent or 0),
+                "output_tokens": int(row.completion_tokens_spent or 0),
                 "username": login,
                 "is_active": row.is_active,
             }
@@ -189,7 +195,9 @@ def logs() -> str:
                 "llm_response_full": llm_full,
                 "llm_response_present": has_llm_text,
                 "llm_response_truncated": llm_truncated,
-                "tokens_used": record.tokens_used,
+                "tokens_used": int(record.tokens_used or 0),
+                "input_tokens": int(record.prompt_tokens or 0),
+                "output_tokens": int(record.completion_tokens or 0),
                 "created_at": created_at_formatted,
             }
         )

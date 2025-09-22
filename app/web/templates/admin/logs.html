@@ -94,7 +94,8 @@
       <th>Название</th>
       <th>Сообщений</th>
       <th>Пользователь</th>
-      <th>Расход токенов</th>
+      <th>Input</th>
+      <th>Output</th>
       <th>Статус</th>
       <th>Действия</th>
     </tr>
@@ -106,7 +107,8 @@
       <td><span class="dialog-title" title="{{ dialog.full_title or 'Нет данных' }}">{{ dialog.title }}</span></td>
       <td>{{ dialog.message_count }}</td>
       <td>{{ dialog.username }}</td>
-      <td>{{ dialog.tokens_spent }}</td>
+      <td>{{ dialog.input_tokens }}</td>
+      <td>{{ dialog.output_tokens }}</td>
       <td>{% if dialog.is_active %}Открыт{% else %}Закрыт{% endif %}</td>
       <td>
         {% if dialog.is_active %}
@@ -131,7 +133,8 @@
       <th>Пользователь</th>
       <th>Сообщение</th>
       <th>Ответ</th>
-      <th>Токены</th>
+      <th>Input</th>
+      <th>Output</th>
       <th>Время запроса</th>
     </tr>
   </thead>
@@ -167,7 +170,8 @@
           {% endif %}
         </div>
       </td>
-      <td>{{ record.tokens_used }}</td>
+      <td>{{ record.input_tokens }}</td>
+      <td>{{ record.output_tokens }}</td>
       <td>{{ record.created_at }}</td>
     </tr>
     {% endfor %}
