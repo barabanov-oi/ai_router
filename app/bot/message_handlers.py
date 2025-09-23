@@ -109,13 +109,21 @@ class MessageHandlingMixin:
             text: Исходное сообщение, которое требуется подготовить к отправке.
 
         Returns:
-            Строку, в которой специальные символы MarkdownV2 предварены обратной косой чертой.
+            Строку, в которой специальные символы MarkdownV2 предварены двойной обратной косой чертой.
         """
 
-        escaped_text = str(text)
-        for char in SPECIAL_MARKDOWN_V2_CHARS:
-            escaped_text = escaped_text.replace(char, f"\\{char}")
-        return escaped_text
+        escaped_characters: List[str] = []
+        for character in str(text):
+            if character not in SPECIAL_MARKDOWN_V2_CHARS:
+                escaped_characters.append(character)
+                continue
+
+            if character == "\\":
+                escaped_characters.append("\\\\")
+            else:
+                escaped_characters.append(f"\\\\{character}")
+
+        return "".join(escaped_characters)
 
     # NOTE[agent]: Унифицированная отправка сообщений с обязательным экранированием MarkdownV2.
     def _send_message(self, *args, **kwargs) -> Optional[types.Message]:
