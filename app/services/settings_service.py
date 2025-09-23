@@ -40,12 +40,16 @@ class SettingsService:
     def set(self, key: str, value: Any) -> None:
         """Сохраняет значение настройки."""
 
+        # NOTE[agent]: Значение `None` трактуем как пустую строку, чтобы формы могли
+        # корректно очищать поле настройки без появления текста "None" в базе.
+        normalized_value = "" if value is None else str(value)
+
         setting = AppSetting.query.filter_by(key=key).first()
         if not setting:
-            setting = AppSetting(key=key, value=str(value))
+            setting = AppSetting(key=key, value=normalized_value)
             db.session.add(setting)
         else:
-            setting.update_value(str(value))
+            setting.update_value(normalized_value)
         db.session.commit()
 
     # NOTE[agent]: Метод возвращает множество всех настроек.
