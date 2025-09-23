@@ -12,27 +12,7 @@ from ..models import Dialog, MessageLog, db
 
 
 # NOTE[agent]: Набор символов MarkdownV2, требующих экранирования перед отправкой.
-SPECIAL_MARKDOWN_V2_CHARS = [
-    "\\",
-    "_",
-    "*",
-    "[",
-    "]",
-    "(",
-    ")",
-    "~",
-    "`",
-    ">",
-    "#",
-    "+",
-    "-",
-    "=",
-    "|",
-    "{",
-    "}",
-    ".",
-    "!",
-]
+SPECIAL_MARKDOWN_V2_CHARS = tuple(r"\_*[]()~`>#+-=|{}.!")
 
 
 class MessageHandlingMixin:
@@ -109,7 +89,8 @@ class MessageHandlingMixin:
             text: Исходное сообщение, которое требуется подготовить к отправке.
 
         Returns:
-            Строку, в которой специальные символы MarkdownV2 предварены двойной обратной косой чертой.
+            Строку, в которой специальные символы MarkdownV2 экранированы одинарной обратной косой
+            чертой (символ ``\\`` дублируется согласно требованиям MarkdownV2).
         """
 
         escaped_characters: List[str] = []
@@ -121,7 +102,7 @@ class MessageHandlingMixin:
             if character == "\\":
                 escaped_characters.append("\\\\")
             else:
-                escaped_characters.append(f"\\\\{character}")
+                escaped_characters.append(f"\\{character}")
 
         return "".join(escaped_characters)
 
