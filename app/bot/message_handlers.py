@@ -235,11 +235,46 @@ class MessageHandlingMixin:
                     exc_info=True,
                 )
 
+    # NOTE[agent]: Удаляет inline-клавиатуру у сообщения, по которому пришёл callback.
+    def _remove_message_reply_markup(self, message: Optional[types.Message]) -> None:
+        """Скрывает клавиатуру у указанного сообщения, если оно ещё доступно."""
+
+        if not self._bot or not message:
+            return
+        try:
+            self._bot.edit_message_reply_markup(
+                chat_id=message.chat.id,
+                message_id=message.message_id,
+                reply_markup=None,
+            )
+        except Exception:  # pylint: disable=broad-except
+            self._get_logger().debug(
+                "Не удалось снять клавиатуру с сообщения %s",
+                message.message_id,
+                exc_info=True,
+            )
+
+    # NOTE[agent]: Безопасно удаляет сообщение с клавиатурой истории.
+    def _delete_message_safely(self, message: Optional[types.Message]) -> None:
+        """Удаляет сообщение бота, игнорируя ошибки Telegram API."""
+
+        if not self._bot or not message:
+            return
+        try:
+            self._bot.delete_message(chat_id=message.chat.id, message_id=message.message_id)
+        except Exception:  # pylint: disable=broad-except
+            self._get_logger().debug(
+                "Не удалось удалить сообщение %s",
+                message.message_id,
+                exc_info=True,
+            )
+
     # NOTE[agent]: Завершение текущего диалога и создание нового.
     def _handle_new_dialog(self, call: types.CallbackQuery) -> None:
         """Создаёт новый диалог для пользователя."""
 
         user = self._get_or_create_user(call.from_user)
+        self._remove_message_reply_markup(call.message)
         current_dialog = self._get_active_dialog(user)
         if current_dialog:
             current_dialog.close()
@@ -266,6 +301,7 @@ class MessageHandlingMixin:
         user = self._get_or_create_user(call.from_user)
         if not self._bot:
             return
+        self._remove_message_reply_markup(call.message)
         dialogs = self._get_recent_dialogs(user)
         if not dialogs:
             self._bot.answer_callback_query(call.id, text="История пуста")
@@ -297,13 +333,25 @@ class MessageHandlingMixin:
         if not target_dialog.telegram_chat_id:
             target_dialog.telegram_chat_id = str(call.message.chat.id)
         self._activate_dialog(user, target_dialog)
+        history_message = call.message
+        chat_id: int | None = None
+        if history_message:
+            chat_id = history_message.chat.id
+        elif target_dialog.telegram_chat_id:
+            try:
+                chat_id = int(target_dialog.telegram_chat_id)
+            except (TypeError, ValueError):
+                chat_id = None
+        if chat_id is None:
+            chat_id = call.from_user.id
+        self._delete_message_safely(history_message)
         reply_message_id, last_text = self._get_last_message_reference(target_dialog)
-        title = self._format_dialog_title(target_dialog).lstrip("• ")
+        title = self._format_dialog_title(target_dialog)
         base_text = f"Переключаюсь на диалог «{title}»."
         reply_markup = self._build_inline_keyboard()
         if reply_message_id is not None:
             self._bot.send_message(
-                chat_id=call.message.chat.id,
+                chat_id=chat_id,
                 text=base_text,
                 reply_markup=reply_markup,
                 reply_to_message_id=reply_message_id,
@@ -315,7 +363,7 @@ class MessageHandlingMixin:
         else:
             message_text = f"{base_text}\nПоследнее сообщение не найдено."
         self._bot.send_message(
-            chat_id=call.message.chat.id,
+            chat_id=chat_id,
             text=message_text,
             reply_markup=reply_markup,
         )

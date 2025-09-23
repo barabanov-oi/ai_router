@@ -181,11 +181,12 @@ def logs() -> str:
         created_at_value = record.created_at
         created_at_formatted = "—"
         if isinstance(created_at_value, datetime):
-            created_at_formatted = created_at_value.strftime("%H.%M.%Y")
+            created_at_formatted = created_at_value.strftime("%d.%m.%Y")
         message_rows.append(
             {
                 "id": record.id,
                 "dialog_id": record.dialog_id,
+                "message_index": int(record.message_index or 0),
                 "username": record.user.username or record.user.telegram_id or "—",
                 "user_message_preview": user_preview,
                 "user_message_full": user_full,

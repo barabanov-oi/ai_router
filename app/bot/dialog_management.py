@@ -73,6 +73,8 @@ class DialogManagementMixin:
         keyboard = types.InlineKeyboardMarkup(row_width=1)
         for dialog in dialogs:
             title = self._format_dialog_title(dialog)
+            if dialog.is_active:
+                title = f"✅ {title}"
             keyboard.add(
                 types.InlineKeyboardButton(
                     text=title,
@@ -155,8 +157,6 @@ class DialogManagementMixin:
         prepared = " ".join(base_title.split())
         if len(prepared) > 40:
             prepared = f"{prepared[:40]}…"
-        if dialog.is_active:
-            return f"• {prepared}"
         return prepared or f"Диалог #{dialog.id}"
 
     # NOTE[agent]: Подсчитывает накопленное использование токенов.

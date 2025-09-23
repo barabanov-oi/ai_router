@@ -128,20 +128,20 @@
 <table>
   <thead>
     <tr>
-      <th>ID</th>
+      <th>№ в диалоге</th>
       <th>Диалог</th>
       <th>Пользователь</th>
       <th>Сообщение</th>
       <th>Ответ</th>
       <th>Input</th>
       <th>Output</th>
-      <th>Время запроса</th>
+      <th>Дата запроса</th>
     </tr>
   </thead>
   <tbody>
     {% for record in message_rows %}
     <tr>
-      <td>{{ record.id }}</td>
+      <td>{{ record.message_index }}</td>
       <td>{{ record.dialog_id }}</td>
       <td>{{ record.username }}</td>
       <td>
@@ -151,7 +151,7 @@
           <button
             type="button"
             class="preview-button show-full-text"
-            data-title="Сообщение пользователя #{{ record.id }}"
+            data-title="Сообщение пользователя №{{ record.message_index }} (диалог {{ record.dialog_id }})"
             data-full-text="{{ record.user_message_full | e }}"
           >Показать полностью</button>
           {% endif %}
@@ -164,7 +164,7 @@
           <button
             type="button"
             class="preview-button show-full-text"
-            data-title="Ответ LLM #{{ record.id }}"
+            data-title="Ответ LLM №{{ record.message_index }} (диалог {{ record.dialog_id }})"
             data-full-text="{{ record.llm_response_full | e }}"
           >Показать полностью</button>
           {% endif %}
