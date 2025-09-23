@@ -18,7 +18,7 @@ class MessageHandlingMixin:
     def _create_bot(self, token: str) -> TeleBot:
         """Создаёт экземпляр TeleBot и регистрирует обработчики."""
 
-        bot = TeleBot(token, parse_mode="HTML")
+        bot = TeleBot(token, parse_mode="MarkdownV2")
         known_commands = {"start", "help"}
 
         @bot.message_handler(commands=["start"])
@@ -99,7 +99,7 @@ class MessageHandlingMixin:
             "Подробнее о том, как составить запрос можно узнать в разделе /help"
         )
         if self._bot:
-            self._bot.send_message(chat_id=message.chat.id, text=text, parse_mode="Markdown")
+            self._bot.send_message(chat_id=message.chat.id, text=text, parse_mode="MarkdownV2")
         self._get_logger().info("Пользователь %s (%s) начал работу", user.telegram_id, user.username)
 
     # NOTE[agent]: Подробная справка по возможностям бота.
@@ -128,7 +128,7 @@ class MessageHandlingMixin:
             "✨ Для сложных тем можно попросить уточняющие вопросы после описания задачи: «Задай мне уточняющие вопросы, чтобы я получил максимально точный ответ»."
         )
         if self._bot:
-            self._bot.send_message(chat_id=message.chat.id, text=help_text, parse_mode="Markdown")
+            self._bot.send_message(chat_id=message.chat.id, text=help_text, parse_mode="MarkdownV2")
 
     def _extract_command(self, text: str) -> str | None:
         """Возвращает имя команды, если сообщение начинается со знака '/'."""
@@ -153,7 +153,7 @@ class MessageHandlingMixin:
             self._bot.send_message(
                 chat_id=message.chat.id,
                 text="Команда не найдена.",
-                parse_mode="Markdown",
+                parse_mode="MarkdownV2",
             )
 
     # NOTE[agent]: Разбивает ответ ассистента на части для обхода лимитов Telegram.
@@ -280,17 +280,17 @@ class MessageHandlingMixin:
             current_dialog.close()
         new_dialog = Dialog(
             user_id=user.id,
-            title="Новый диалог",
+            title="✨ Новый диалог",
             telegram_chat_id=str(call.message.chat.id),
         )
         db.session.add(new_dialog)
         db.session.commit()
         if self._bot:
-            self._bot.answer_callback_query(call.id, text="Создан новый диалог")
+            self._bot.answer_callback_query(call.id, text="✨ Создан новый диалог")
             self._bot.send_message(
                 chat_id=call.message.chat.id,
-                text="Контекст очищен. Продолжайте беседу.",
-                parse_mode="Markdown",
+                text="🧹 Контекст очищен. Продолжайте беседу.",
+                parse_mode="MarkdownV2",
                 reply_markup=self._build_inline_keyboard(),
             )
 
@@ -347,7 +347,7 @@ class MessageHandlingMixin:
         self._delete_message_safely(history_message)
         reply_message_id, last_text = self._get_last_message_reference(target_dialog)
         title = self._format_dialog_title(target_dialog)
-        base_text = f"Переключаюсь на диалог «{title}»."
+        base_text = f"🔄 Переключаюсь на диалог *«{title}»*."
         reply_markup = self._build_inline_keyboard()
         if reply_message_id is not None:
             self._bot.send_message(
@@ -359,9 +359,10 @@ class MessageHandlingMixin:
             return
         snippet = last_text or ""
         if snippet:
-            message_text = f"{base_text}\nПоследнее сообщение: {snippet}"
+            snippet = snippet.replace('\n', '\n>')
+            message_text = f"{base_text}\n📩 Последнее сообщение:\n{snippet}"
         else:
-            message_text = f"{base_text}\nПоследнее сообщение не найдено."
+            message_text = f"{base_text}\n🚫 Последнее сообщение не найдено."
         self._bot.send_message(
             chat_id=chat_id,
             text=message_text,
@@ -378,7 +379,7 @@ class MessageHandlingMixin:
                 self._bot.send_message(
                     chat_id=message.chat.id,
                     text="Ваш доступ к боту ограничен. Обратитесь к администратору.",
-                    parse_mode="Markdown",
+                    parse_mode="MarkdownV2",
                 )
             return
 
@@ -453,7 +454,7 @@ class MessageHandlingMixin:
                         chat_id=message.chat.id,
                         text=chunk,
                         reply_markup=markup,
-                        parse_mode="Markdown",
+                        parse_mode="MarkdownV2",
                     )
                     if markup is not None:
                         last_message_id = getattr(sent, "message_id", None)
@@ -466,7 +467,7 @@ class MessageHandlingMixin:
                 self._bot.send_message(
                     chat_id=message.chat.id,
                     text=f"Произошла ошибка: {exc}",
-                    parse_mode="Markdown",
+                    parse_mode="MarkdownV2",
                 )
         finally:
             if typing_stop_event:

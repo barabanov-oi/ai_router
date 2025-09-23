@@ -60,8 +60,8 @@ class DialogManagementMixin:
 
         keyboard = types.InlineKeyboardMarkup(row_width=2)
         keyboard.add(
-            types.InlineKeyboardButton(text="Новый диалог", callback_data="dialog:new"),
-            types.InlineKeyboardButton(text="История диалогов", callback_data="dialog:history"),
+            types.InlineKeyboardButton(text="✨ Новый диалог", callback_data="dialog:new"),
+            types.InlineKeyboardButton(text="📜 История диалогов", callback_data="dialog:history"),
         )
         return keyboard
 
@@ -82,7 +82,7 @@ class DialogManagementMixin:
                 )
             )
         keyboard.add(
-            types.InlineKeyboardButton(text="Новый диалог", callback_data="dialog:new"),
+            types.InlineKeyboardButton(text="✨ Новый диалог", callback_data="dialog:new"),
         )
         return keyboard
 
@@ -193,9 +193,9 @@ class DialogManagementMixin:
             limit_source = log_entry.model.dialog_token_limit if log_entry.model else None
             total_limit = limit_source or 20000
         return (
-            "Использовано токенов: "
-            f"{total_tokens} / {total_limit} "
-            f"(вопрос: {prompt_total}, ответ: {completion_total})"
+            "📊 Использовано токенов: "
+            f"_{total_tokens} / {total_limit}_ "
+            f"(вопрос: _{prompt_total}_, ответ: _{completion_total}_)"
         )
 
     # NOTE[agent]: Определяет, как сослаться на последнее сообщение диалога.
