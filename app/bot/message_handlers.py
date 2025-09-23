@@ -205,6 +205,36 @@ class MessageHandlingMixin:
 
         return chunks
 
+    # NOTE[agent]: Удаление inline-клавиатуры у предыдущих ответов LLM.
+    def _clear_previous_reply_markup(self, dialog: Dialog, chat_id: int) -> None:
+        """Отключает клавиатуру у всех ранее отправленных ответов ассистента."""
+
+        if not self._bot:
+            return
+        previous_responses = (
+            MessageLog.query.filter(
+                MessageLog.dialog_id == dialog.id,
+                MessageLog.assistant_message_id.isnot(None),
+            )
+            .order_by(MessageLog.message_index.asc())
+            .all()
+        )
+        for log_entry in previous_responses:
+            if not log_entry.assistant_message_id:
+                continue
+            try:
+                self._bot.edit_message_reply_markup(
+                    chat_id=chat_id,
+                    message_id=log_entry.assistant_message_id,
+                    reply_markup=None,
+                )
+            except Exception:  # pylint: disable=broad-except
+                self._get_logger().debug(
+                    "Не удалось удалить клавиатуру у сообщения %s",
+                    log_entry.assistant_message_id,
+                    exc_info=True,
+                )
+
     # NOTE[agent]: Завершение текущего диалога и создание нового.
     def _handle_new_dialog(self, call: types.CallbackQuery) -> None:
         """Создаёт новый диалог для пользователя."""
@@ -366,6 +396,7 @@ class MessageHandlingMixin:
             response_with_usage = f"{response_text}\n\n{usage_summary}" if response_text else usage_summary
             reply_markup = self._build_inline_keyboard()
             if self._bot:
+                self._clear_previous_reply_markup(dialog, message.chat.id)
                 chunks = self._prepare_response_chunks(response_with_usage)
                 last_message_id: Optional[int] = None
                 for index, chunk in enumerate(chunks):

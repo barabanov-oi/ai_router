@@ -204,6 +204,20 @@ class DialogManagementMixin:
 
         if not dialog.telegram_chat_id:
             return None, None
+        last_response_log = (
+            MessageLog.query.filter_by(dialog_id=dialog.id)
+            .filter(
+                (MessageLog.assistant_message_id.isnot(None))
+                | (MessageLog.llm_response.isnot(None))
+            )
+            .order_by(MessageLog.message_index.desc())
+            .first()
+        )
+        if last_response_log:
+            if last_response_log.assistant_message_id:
+                return last_response_log.assistant_message_id, None
+            if last_response_log.llm_response:
+                return None, last_response_log.llm_response[-150:]
         last_log = (
             MessageLog.query.filter_by(dialog_id=dialog.id)
             .order_by(MessageLog.message_index.desc())
@@ -211,9 +225,6 @@ class DialogManagementMixin:
         )
         if not last_log:
             return None, None
-        target_message_id = last_log.assistant_message_id or last_log.user_message_id
-        if target_message_id:
-            return target_message_id, None
         last_text = last_log.llm_response or last_log.user_message
         if last_text:
             return None, last_text[-150:]
