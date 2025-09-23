@@ -11,6 +11,30 @@ from telebot import TeleBot, types
 from ..models import Dialog, MessageLog, db
 
 
+# NOTE[agent]: Набор символов MarkdownV2, требующих экранирования перед отправкой.
+SPECIAL_MARKDOWN_V2_CHARS = [
+    "\\",
+    "_",
+    "*",
+    "[",
+    "]",
+    "(",
+    ")",
+    "~",
+    "`",
+    ">",
+    "#",
+    "+",
+    "-",
+    "=",
+    "|",
+    "{",
+    "}",
+    ".",
+    "!",
+]
+
+
 class MessageHandlingMixin:
     """Регистрирует обработчики и реализует реакции на события бота."""
 
@@ -77,6 +101,54 @@ class MessageHandlingMixin:
 
         return bot
 
+    # NOTE[agent]: Экранирование служебных символов MarkdownV2.
+    def _escape_markdown_v2(self, text: str) -> str:
+        """Возвращает строку с экранированными символами MarkdownV2.
+
+        Args:
+            text: Исходное сообщение, которое требуется подготовить к отправке.
+
+        Returns:
+            Строку, в которой специальные символы MarkdownV2 предварены обратной косой чертой.
+        """
+
+        escaped_text = str(text)
+        for char in SPECIAL_MARKDOWN_V2_CHARS:
+            escaped_text = escaped_text.replace(char, f"\\{char}")
+        return escaped_text
+
+    # NOTE[agent]: Унифицированная отправка сообщений с обязательным экранированием MarkdownV2.
+    def _send_message(self, *args, **kwargs) -> Optional[types.Message]:
+        """Отправляет сообщение через TeleBot с экранированием MarkdownV2.
+
+        Args:
+            *args: Позиционные аргументы, поддерживаемые методом `send_message` TeleBot.
+            **kwargs: Именованные аргументы, поддерживаемые методом `send_message` TeleBot.
+
+        Returns:
+            Объект сообщения TeleBot при успешной отправке или ``None``, если бот не инициализирован.
+        """
+
+        if not self._bot:
+            return None
+
+        text_argument: Optional[str] = None
+        if "text" in kwargs:
+            text_argument = kwargs["text"]
+        elif len(args) > 1:
+            text_argument = args[1]
+
+        if text_argument is not None:
+            escaped_text = self._escape_markdown_v2(text_argument)
+            if "text" in kwargs:
+                kwargs["text"] = escaped_text
+            else:
+                args_list = list(args)
+                args_list[1] = escaped_text
+                args = tuple(args_list)
+
+        return self._bot.send_message(*args, **kwargs)
+
     # NOTE[agent]: Приветственное сообщение и первичная регистрация пользователя.
     def _handle_start(self, message: types.Message) -> None:
         """Отправляет приветствие и регистрирует пользователя."""
@@ -99,7 +171,7 @@ class MessageHandlingMixin:
             "Подробнее о том, как составить запрос можно узнать в разделе /help"
         )
         if self._bot:
-            self._bot.send_message(chat_id=message.chat.id, text=text, parse_mode="MarkdownV2")
+            self._send_message(chat_id=message.chat.id, text=text, parse_mode="MarkdownV2")
         self._get_logger().info("Пользователь %s (%s) начал работу", user.telegram_id, user.username)
 
     # NOTE[agent]: Подробная справка по возможностям бота.
@@ -128,7 +200,7 @@ class MessageHandlingMixin:
             "✨ Для сложных тем можно попросить уточняющие вопросы после описания задачи: «Задай мне уточняющие вопросы, чтобы я получил максимально точный ответ»."
         )
         if self._bot:
-            self._bot.send_message(chat_id=message.chat.id, text=help_text, parse_mode="MarkdownV2")
+            self._send_message(chat_id=message.chat.id, text=help_text, parse_mode="MarkdownV2")
 
     def _extract_command(self, text: str) -> str | None:
         """Возвращает имя команды, если сообщение начинается со знака '/'."""
@@ -150,7 +222,7 @@ class MessageHandlingMixin:
         """Отправляет уведомление об отсутствующей команде."""
 
         if self._bot:
-            self._bot.send_message(
+            self._send_message(
                 chat_id=message.chat.id,
                 text="Команда не найдена.",
                 parse_mode="MarkdownV2",
@@ -287,7 +359,7 @@ class MessageHandlingMixin:
         db.session.commit()
         if self._bot:
             self._bot.answer_callback_query(call.id, text="✨ Создан новый диалог")
-            self._bot.send_message(
+            self._send_message(
                 chat_id=call.message.chat.id,
                 text="🧹 Контекст очищен. Продолжайте беседу.",
                 parse_mode="MarkdownV2",
@@ -308,7 +380,7 @@ class MessageHandlingMixin:
             return
         history_keyboard = self._build_history_keyboard(user)
         self._bot.answer_callback_query(call.id)
-        self._bot.send_message(
+        self._send_message(
             chat_id=call.message.chat.id,
             text="Выберите диалог из истории:",
             reply_markup=history_keyboard,
@@ -324,11 +396,11 @@ class MessageHandlingMixin:
         user = self._get_or_create_user(call.from_user)
         dialog_id = self._extract_dialog_id(call.data)
         if dialog_id is None:
-            self._bot.send_message(chat_id=call.message.chat.id, text="Не удалось определить диалог")
+            self._send_message(chat_id=call.message.chat.id, text="Не удалось определить диалог")
             return
         target_dialog = Dialog.query.filter_by(id=dialog_id, user_id=user.id).first()
         if not target_dialog:
-            self._bot.send_message(chat_id=call.message.chat.id, text="Диалог не найден")
+            self._send_message(chat_id=call.message.chat.id, text="Диалог не найден")
             return
         if not target_dialog.telegram_chat_id:
             target_dialog.telegram_chat_id = str(call.message.chat.id)
@@ -350,7 +422,7 @@ class MessageHandlingMixin:
         base_text = f"🔄 Переключаюсь на диалог *«{title}»*."
         reply_markup = self._build_inline_keyboard()
         if reply_message_id is not None:
-            self._bot.send_message(
+            self._send_message(
                 chat_id=chat_id,
                 text=base_text,
                 reply_markup=reply_markup,
@@ -363,7 +435,7 @@ class MessageHandlingMixin:
             message_text = f"{base_text}\n📩 Последнее сообщение:\n{snippet}"
         else:
             message_text = f"{base_text}\n🚫 Последнее сообщение не найдено."
-        self._bot.send_message(
+        self._send_message(
             chat_id=chat_id,
             text=message_text,
             reply_markup=reply_markup,
@@ -376,7 +448,7 @@ class MessageHandlingMixin:
         user = self._get_or_create_user(message.from_user)
         if not user.is_active:
             if self._bot:
-                self._bot.send_message(
+                self._send_message(
                     chat_id=message.chat.id,
                     text="Ваш доступ к боту ограничен. Обратитесь к администратору.",
                     parse_mode="MarkdownV2",
@@ -450,7 +522,7 @@ class MessageHandlingMixin:
                 last_message_id: Optional[int] = None
                 for index, chunk in enumerate(chunks):
                     markup = reply_markup if index == len(chunks) - 1 else None
-                    sent = self._bot.send_message(
+                    sent = self._send_message(
                         chat_id=message.chat.id,
                         text=chunk,
                         reply_markup=markup,
@@ -464,7 +536,7 @@ class MessageHandlingMixin:
         except Exception as exc:  # pylint: disable=broad-except
             self._get_logger().exception("Ошибка при обращении к LLM")
             if self._bot:
-                self._bot.send_message(
+                self._send_message(
                     chat_id=message.chat.id,
                     text=f"Произошла ошибка: {exc}",
                     parse_mode="MarkdownV2",
