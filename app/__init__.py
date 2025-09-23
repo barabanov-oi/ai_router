@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+import locale
 import logging
 import os
 import sys
@@ -209,9 +210,30 @@ def _register_blueprints(app: Flask) -> None:
 
 
 def _get_preferred_log_encoding() -> str:
-    """Определяет кодировку логов в зависимости от операционной системы."""
+    """Определяет кодировку логов с учётом платформы и окружения.
 
-    return "cp1251" if os.name == "nt" else "utf-8"
+    Returns:
+        str: Имя кодировки, которая подходит для текущего терминала.
+    """
+
+    override_encoding = os.environ.get("AI_ROUTER_LOG_ENCODING")
+    if override_encoding:
+        return override_encoding
+
+    if os.name == "nt":
+        stdout_encoding = getattr(sys.stdout, "encoding", None)
+        if stdout_encoding:
+            return stdout_encoding
+
+        stderr_encoding = getattr(sys.stderr, "encoding", None)
+        if stderr_encoding:
+            return stderr_encoding
+
+        locale_encoding = locale.getpreferredencoding(False)
+        if locale_encoding:
+            return locale_encoding
+
+    return "utf-8"
 
 
 def _configure_existing_handlers(handlers: List[Handler], encoding: str, level: int) -> None:
