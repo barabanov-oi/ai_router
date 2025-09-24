@@ -380,7 +380,7 @@ class MessageHandlingMixin:
         base_text = format_text(
             "🔄 Переключаюсь на диалог ",
             mbold(f"«{title}»"),
-            ".",
+            self._escape_markdown("."),
             separator="",
         )
         reply_markup = self._build_inline_keyboard()
