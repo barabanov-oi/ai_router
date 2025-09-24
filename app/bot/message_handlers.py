@@ -181,12 +181,12 @@ class MessageHandlingMixin:
         """Делит ответ LLM на части с учётом ограничений Telegram."""
 
         processed_text = self._escape_markdown(text) if escape else text
+        continuation = self._escape_markdown("...")
         if len(processed_text) <= 4096:
             return [processed_text]
 
         chunks: List[str] = []
         remaining = processed_text
-        continuation = "..."
         first_chunk = True
 
         while remaining:
