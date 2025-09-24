@@ -177,15 +177,15 @@ class MessageHandlingMixin:
         )
 
     # NOTE[agent]: Разбивает ответ ассистента на части для обхода лимитов Telegram.
-    def _prepare_response_chunks(self, text: str) -> List[str]:
+    def _prepare_response_chunks(self, text: str, *, escape: bool = True) -> List[str]:
         """Делит ответ LLM на части с учётом ограничений Telegram."""
 
-        escaped_text = self._escape_markdown(text)
-        if len(escaped_text) <= 4096:
-            return [escaped_text]
+        processed_text = self._escape_markdown(text) if escape else text
+        if len(processed_text) <= 4096:
+            return [processed_text]
 
         chunks: List[str] = []
-        remaining = escaped_text
+        remaining = processed_text
         continuation = "..."
         first_chunk = True
 
@@ -492,12 +492,16 @@ class MessageHandlingMixin:
         try:
             response_text = self._query_llm(dialog, log_entry)
             db.session.refresh(log_entry)
+            escaped_response = self._escape_markdown(response_text) if response_text else ""
             usage_summary = self._format_usage_summary(dialog, log_entry)
-            response_with_usage = f"{response_text}\n\n{usage_summary}" if response_text else usage_summary
+            if escaped_response and usage_summary:
+                response_with_usage = f"{escaped_response}\n\n{usage_summary}"
+            else:
+                response_with_usage = escaped_response or usage_summary
             reply_markup = self._build_inline_keyboard()
             if self._bot:
                 self._clear_previous_reply_markup(dialog, message.chat.id)
-                chunks = self._prepare_response_chunks(response_with_usage)
+                chunks = self._prepare_response_chunks(response_with_usage, escape=False)
                 last_message_id: Optional[int] = None
                 for index, chunk in enumerate(chunks):
                     markup = reply_markup if index == len(chunks) - 1 else None
