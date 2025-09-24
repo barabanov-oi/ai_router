@@ -6,6 +6,7 @@ from datetime import datetime
 from typing import Dict, Iterable, List, Optional, Tuple
 
 from telebot import types
+from telebot.formatting import escape_markdown
 from sqlalchemy import func
 
 from ..models import Dialog, MessageLog, ModelConfig, User, db
@@ -192,10 +193,26 @@ class DialogManagementMixin:
             )
             limit_source = log_entry.model.dialog_token_limit if log_entry.model else None
             total_limit = limit_source or 20000
+        def _italic(value: int | str) -> str:
+            """Возвращает значение, выделенное курсивом в MarkdownV2."""
+
+            return f"_{escape_markdown(str(value))}_"
+
+        prefix = escape_markdown("📊 Использовано токенов:")
+        question_label = escape_markdown(" (вопрос: ")
+        answer_label = escape_markdown(", ответ: ")
+        closing_bracket = escape_markdown(")")
+        total_text = _italic(f"{total_tokens} / {total_limit}")
+        prompt_text = _italic(prompt_total)
+        completion_text = _italic(completion_total)
         return (
-            "📊 Использовано токенов: "
-            f"_{total_tokens} / {total_limit}_ "
-            f"(вопрос: _{prompt_total}_, ответ: _{completion_total}_)"
+            f"{prefix} "
+            f"{total_text}"
+            f"{question_label}"
+            f"{prompt_text}"
+            f"{answer_label}"
+            f"{completion_text}"
+            f"{closing_bracket}"
         )
 
     # NOTE[agent]: Определяет, как сослаться на последнее сообщение диалога.
