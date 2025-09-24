@@ -8,6 +8,7 @@ from typing import Dict, Iterable, List, Optional, Tuple
 from telebot import types
 from telebot.formatting import escape_markdown
 from sqlalchemy import func
+from sqlalchemy.exc import IntegrityError
 
 from ..models import Dialog, MessageLog, ModelConfig, User, db
 from .bot_modes import MODE_DEFINITIONS
@@ -106,7 +107,18 @@ class DialogManagementMixin:
             full_name=full_name,
         )
         db.session.add(user)
-        db.session.commit()
+        try:
+            db.session.commit()
+        except IntegrityError:
+            db.session.rollback()
+            user = User.query.filter_by(telegram_id=str(telegram_user.id)).first()
+            if user is None:
+                raise
+            if telegram_user.username and user.username != telegram_user.username:
+                user.username = telegram_user.username
+            if full_name and user.full_name != full_name:
+                user.full_name = full_name
+            db.session.commit()
         return user
 
     # NOTE[agent]: Получение активного диалога пользователя.
