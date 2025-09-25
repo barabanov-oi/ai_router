@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 from datetime import datetime
+from html import escape
 from typing import Dict, Iterable, List, Optional, Tuple
 
 from telebot import types
-from telebot.formatting import escape_markdown
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 
@@ -206,14 +206,14 @@ class DialogManagementMixin:
             limit_source = log_entry.model.dialog_token_limit if log_entry.model else None
             total_limit = limit_source or 20000
         def _italic(value: int | str) -> str:
-            """Возвращает значение, выделенное курсивом в MarkdownV2."""
+            """Возвращает значение, выделенное курсивом в HTML."""
 
-            return f"_{escape_markdown(str(value))}_"
+            return f"<i>{escape(str(value))}</i>"
 
-        prefix = escape_markdown("📊 Использовано токенов:")
-        question_label = escape_markdown(" (вопрос: ")
-        answer_label = escape_markdown(", ответ: ")
-        closing_bracket = escape_markdown(")")
+        prefix = escape("📊 Использовано токенов:")
+        question_label = escape(" (вопрос: ")
+        answer_label = escape(", ответ: ")
+        closing_bracket = escape(")")
         total_text = _italic(f"{total_tokens} / {total_limit}")
         prompt_text = _italic(prompt_total)
         completion_text = _italic(completion_total)
