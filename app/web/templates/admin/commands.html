@@ -1,0 +1,46 @@
+{% extends "admin/base.html" %}
+{% block title %}Команды — AI Router{% endblock %}
+{% block content %}
+  <h2>Настраиваемые команды бота</h2>
+  <p>
+    Добавьте команды вида <code>/example</code>, чтобы бот мгновенно отвечал подготовленным сообщением.
+    Ответы отправляются в MarkdownV2, спецсимволы экранируются автоматически.
+  </p>
+
+  <section class="model-form">
+    <h3>Добавить новую команду</h3>
+    <form method="post">
+      <input type="hidden" name="action" value="create">
+      <label for="command-name">Команда</label>
+      <input id="command-name" type="text" name="command" placeholder="/example" required>
+      <label for="command-response">Ответ</label>
+      <textarea id="command-response" name="response" placeholder="Ответ, который увидит пользователь" required></textarea>
+      <button class="btn" type="submit">Сохранить</button>
+    </form>
+  </section>
+
+  {% if commands %}
+    <h3>Список команд</h3>
+    {% for command in commands %}
+      <details class="model-editor">
+        <summary>/{{ command.name }}</summary>
+        <form method="post">
+          <input type="hidden" name="action" value="update">
+          <input type="hidden" name="command_id" value="{{ command.id }}">
+          <label>Команда</label>
+          <input type="text" name="command" value="/{{ command.name }}" required>
+          <label>Ответ</label>
+          <textarea name="response" required>{{ command.response_text }}</textarea>
+          <button class="btn" type="submit">Обновить</button>
+        </form>
+        <form method="post" class="inline" style="margin-top: 8px;">
+          <input type="hidden" name="action" value="delete">
+          <input type="hidden" name="command_id" value="{{ command.id }}">
+          <button class="btn danger" type="submit">Удалить</button>
+        </form>
+      </details>
+    {% endfor %}
+  {% else %}
+    <p>Пока не создано ни одной пользовательской команды.</p>
+  {% endif %}
+{% endblock %}

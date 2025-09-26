@@ -8,8 +8,9 @@ from typing import Any, List, Optional
 
 from telebot import TeleBot, types
 from telebot.formatting import escape_markdown, format_text, mbold
+from sqlalchemy.exc import SQLAlchemyError
 
-from ..models import Dialog, MessageLog, db
+from ..models import BotCommand, Dialog, MessageLog, db
 
 
 class MessageHandlingMixin:
@@ -21,6 +22,9 @@ class MessageHandlingMixin:
 
         bot = TeleBot(token, parse_mode="MarkdownV2")
         known_commands = {"start", "help"}
+
+        # NOTE[agent]: Подгружаем настраиваемые команды из базы перед регистрацией обработчиков.
+        self._register_custom_commands(bot, known_commands)
 
         @bot.message_handler(commands=["start"])
         def handle_start(message: types.Message) -> None:
@@ -77,6 +81,32 @@ class MessageHandlingMixin:
                 self._handle_message(message)
 
         return bot
+
+    # NOTE[agent]: Регистрирует обработчики для пользовательских команд.
+    def _register_custom_commands(self, bot: TeleBot, known_commands: set[str]) -> None:
+        """Добавляет обработчики из таблицы команд."""
+
+        try:
+            with self._app_context():
+                commands = BotCommand.query.order_by(BotCommand.name.asc()).all()
+        except SQLAlchemyError:
+            self._get_logger().warning("Не удалось загрузить команды бота — таблица может отсутствовать")
+            commands = []
+        for command in commands:
+            if not command.name:
+                continue
+            command_name = command.name.lower()
+            known_commands.add(command_name)
+
+            @bot.message_handler(commands=[command_name])
+            def handle_custom_command(
+                message: types.Message,
+                response_text: str = command.response_text,
+            ) -> None:
+                """Отправляет преднастроенный ответ на пользовательскую команду."""
+
+                with self._app_context():
+                    self._handle_custom_command(message, response_text)
 
     # NOTE[agent]: Приветственное сообщение и первичная регистрация пользователя.
     def _handle_start(self, message: types.Message) -> None:
@@ -174,6 +204,17 @@ class MessageHandlingMixin:
             chat_id=message.chat.id,
             text="Команда не найдена.",
             parse_mode="MarkdownV2",
+        )
+
+    # NOTE[agent]: Обрабатывает кастомные команды, сохранённые в базе данных.
+    def _handle_custom_command(self, message: types.Message, response_text: str) -> None:
+        """Отправляет ответ из таблицы команд."""
+
+        self._send_message(
+            chat_id=message.chat.id,
+            text=response_text,
+            parse_mode="MarkdownV2",
+            escape=True,
         )
 
     # NOTE[agent]: Разбивает ответ ассистента на части для обхода лимитов Telegram.
