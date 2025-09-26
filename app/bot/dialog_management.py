@@ -5,8 +5,9 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Dict, Iterable, List, Optional, Tuple
 
+from html import escape as html_escape
+
 from telebot import types
-from telebot.formatting import escape_markdown
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 
@@ -206,25 +207,25 @@ class DialogManagementMixin:
             limit_source = log_entry.model.dialog_token_limit if log_entry.model else None
             total_limit = limit_source or 20000
         def _italic(value: int | str) -> str:
-            """Возвращает значение, выделенное курсивом в MarkdownV2."""
+            """Возвращает значение, выделенное курсивом в HTML."""
 
-            return f"_{escape_markdown(str(value))}_"
+            return f"<i>{html_escape(str(value))}</i>"
 
-        prefix = escape_markdown("📊 Использовано токенов:")
-        question_label = escape_markdown(" (вопрос: ")
-        answer_label = escape_markdown(", ответ: ")
-        closing_bracket = escape_markdown(")")
+        prefix = "📊 Использовано токенов:"
+        question_label = " (вопрос: "
+        answer_label = ", ответ: "
+        closing_bracket = ")"
         total_text = _italic(f"{total_tokens} / {total_limit}")
         prompt_text = _italic(prompt_total)
         completion_text = _italic(completion_total)
         return (
-            f"{prefix} "
+            f"{html_escape(prefix)} "
             f"{total_text}"
-            f"{question_label}"
+            f"{html_escape(question_label)}"
             f"{prompt_text}"
-            f"{answer_label}"
+            f"{html_escape(answer_label)}"
             f"{completion_text}"
-            f"{closing_bracket}"
+            f"{html_escape(closing_bracket)}"
         )
 
     # NOTE[agent]: Определяет, как сослаться на последнее сообщение диалога.
