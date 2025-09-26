@@ -22,3 +22,4 @@ from .message import MessageLog  # noqa: E402  pylint: disable=wrong-import-posi
 from .model_config import ModelConfig  # noqa: E402  pylint: disable=wrong-import-position
 from .provider import LLMProvider  # noqa: E402  pylint: disable=wrong-import-position
 from .setting import AppSetting  # noqa: E402  pylint: disable=wrong-import-position
+from .command import BotCommand  # noqa: E402  pylint: disable=wrong-import-position
