@@ -9,7 +9,7 @@ from typing import Any, List, Optional
 from telebot import TeleBot, types
 from telebot.formatting import escape_markdown, format_text, mbold
 
-from ..models import Dialog, MessageLog, db
+from ..models import BotCommand, Dialog, MessageLog, db
 
 
 class MessageHandlingMixin:
@@ -20,7 +20,18 @@ class MessageHandlingMixin:
         """Создаёт экземпляр TeleBot и регистрирует обработчики."""
 
         bot = TeleBot(token, parse_mode="MarkdownV2")
-        known_commands = {"start", "help"}
+
+        with self._app_context():
+            custom_commands = list(BotCommand.query.all())
+
+        custom_command_mapping: dict[str, str] = {}
+        for command in custom_commands:
+            command_name = (command.name or "").lstrip("/").lower()
+            if not command_name:
+                continue
+            custom_command_mapping[command_name] = command.response_text
+
+        known_commands = {"start", "help", *custom_command_mapping.keys()}
 
         @bot.message_handler(commands=["start"])
         def handle_start(message: types.Message) -> None:
@@ -35,6 +46,21 @@ class MessageHandlingMixin:
 
             with self._app_context():
                 self._handle_help(message)
+
+        for command_name, response_text in custom_command_mapping.items():
+            @bot.message_handler(commands=[command_name])
+            def handle_custom_command(
+                message: types.Message,
+                prepared_response: str = response_text,
+            ) -> None:
+                """Отправляет ответ, сохранённый для пользовательской команды."""
+
+                with self._app_context():
+                    self._send_message(
+                        chat_id=message.chat.id,
+                        text=prepared_response,
+                        parse_mode="MarkdownV2",
+                    )
 
         @bot.message_handler(
             func=lambda message, commands=known_commands: self._is_unknown_command(message, commands)
