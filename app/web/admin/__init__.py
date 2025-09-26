@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple, Union
+from urllib.parse import urlparse
 
-from flask import Blueprint, Response, current_app, jsonify, redirect, render_template, request, url_for
+from flask import Blueprint, Response, current_app, jsonify, redirect, render_template, request, session, url_for
 
 from ...models import BotCommand, Dialog, LLMProvider, MessageLog, ModelConfig, User, db
 from ...bot.bot_service import TelegramBotManager
@@ -15,6 +16,84 @@ from sqlalchemy import func
 from sqlalchemy.exc import SQLAlchemyError
 
 admin_bp = Blueprint("admin", __name__, url_prefix="/admin", template_folder="../templates")
+
+
+# NOTE[agent]: Ключ сессии, сигнализирующий об авторизованном администраторе.
+ADMIN_SESSION_KEY = "admin_authenticated"
+
+
+# NOTE[agent]: Обработчик проверяет доступ к маршрутам админ-панели.
+@admin_bp.before_request
+def ensure_authenticated() -> Optional[Response]:
+    """Перенаправляет неавторизованных пользователей на форму входа."""
+
+    endpoint = request.endpoint or ""
+    if endpoint.endswith("login") or endpoint.endswith("logout"):
+        return None
+    if _is_admin_authenticated():
+        return None
+    next_url = request.url
+    return redirect(url_for("admin.login", next=next_url))
+
+
+# NOTE[agent]: Маршрут отображает и обрабатывает форму входа в админку.
+@admin_bp.route("/login", methods=["GET", "POST"])
+def login() -> Union[Response, str]:
+    """Авторизует администратора на основе настроек приложения."""
+
+    error: Optional[str] = None
+    app_login = current_app.config.get("ADMIN_LOGIN")
+    app_password = current_app.config.get("ADMIN_PASSWORD")
+    credentials_configured = bool(app_login and app_password)
+    if request.method == "POST":
+        if not credentials_configured:
+            error = "Учётные данные администратора не настроены."
+        else:
+            form_login = request.form.get("login", "").strip()
+            form_password = request.form.get("password", "")
+            if form_login == app_login and form_password == app_password:
+                session[ADMIN_SESSION_KEY] = True
+                session["admin_login"] = form_login
+                redirect_target = _safe_next_url(request.args.get("next"))
+                return redirect(redirect_target)
+            error = "Неверный логин или пароль."
+    return render_template(
+        "admin/login.html",
+        error=error,
+        credentials_configured=credentials_configured,
+    )
+
+
+# NOTE[agent]: Маршрут завершает сессию администратора.
+@admin_bp.route("/logout")
+def logout() -> Response:
+    """Выходит из админ-панели и очищает сессию пользователя."""
+
+    session.pop(ADMIN_SESSION_KEY, None)
+    session.pop("admin_login", None)
+    return redirect(url_for("admin.login"))
+
+
+# NOTE[agent]: Вспомогательная функция проверяет авторизацию в сессии.
+def _is_admin_authenticated() -> bool:
+    """Сообщает, авторизован ли администратор в текущей сессии."""
+
+    return bool(session.get(ADMIN_SESSION_KEY))
+
+
+# NOTE[agent]: Вспомогательная функция защищает редирект после логина.
+def _safe_next_url(next_url: Optional[str]) -> str:
+    """Возвращает безопасный относительный URL для перенаправления."""
+
+    default_url = url_for("admin.dashboard")
+    if not next_url:
+        return default_url
+    parsed = urlparse(next_url)
+    if parsed.scheme or parsed.netloc:
+        return default_url
+    if not parsed.path.startswith("/admin"):
+        return default_url
+    return next_url
 
 
 # NOTE[agent]: Точка входа в админку отображает ключевые метрики и статус бота.

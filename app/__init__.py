@@ -18,6 +18,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from .models import db, AppSetting, LLMProvider, ModelConfig
 from .bot.bot_service import TelegramBotManager
+from dotenv import load_dotenv
 
 
 # NOTE[agent]: Экземпляр мигратора (Alembic через Flask-Migrate).
@@ -49,6 +50,13 @@ def create_app(config: Optional[Dict[str, Any]] = None) -> Flask:
         TELEGRAM_WEBHOOK_HOST=os.environ.get("AI_ROUTER_WEBHOOK_HOST", ""),
     )
 
+    # NOTE[agent]: Загружаем учётные данные админа из окружения или .env.
+    admin_login, admin_password = _load_admin_credentials()
+    app.config["ADMIN_LOGIN"] = admin_login
+    app.config["ADMIN_PASSWORD"] = admin_password
+    if not admin_login or not admin_password:
+        app.logger.warning("Учётные данные администратора не заданы.")
+
     if config:
         app.config.update(config)
 
@@ -71,6 +79,22 @@ def create_app(config: Optional[Dict[str, Any]] = None) -> Flask:
     app.extensions["bot_manager"] = bot_manager
 
     return app
+
+
+# NOTE[agent]: Функция подготавливает логин и пароль администратора.
+def _load_admin_credentials() -> tuple[Optional[str], Optional[str]]:
+    """Возвращает логин и пароль администратора из окружения или .env."""
+
+    admin_login = os.environ.get("ADMLOGIN")
+    admin_password = os.environ.get("ADMPWD")
+    if admin_login and admin_password:
+        return admin_login, admin_password
+
+    # NOTE[agent]: Если переменных нет — пытаемся загрузить их из файла .env.
+    load_dotenv()
+    admin_login = admin_login or os.environ.get("ADMLOGIN")
+    admin_password = admin_password or os.environ.get("ADMPWD")
+    return admin_login, admin_password
 
 
 # NOTE[agent]: Вспомогательная функция настраивает логирование приложения.
