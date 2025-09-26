@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import threading
+from html import escape as html_escape
 
 from typing import Any, List, Optional
 
 from telebot import TeleBot, types
-from telebot.formatting import escape_markdown, format_text, mbold
 
 from ..models import BotCommand, Dialog, MessageLog, db
 
@@ -19,7 +19,7 @@ class MessageHandlingMixin:
     def _create_bot(self, token: str) -> TeleBot:
         """Создаёт экземпляр TeleBot и регистрирует обработчики."""
 
-        bot = TeleBot(token, parse_mode="MarkdownV2")
+        bot = TeleBot(token, parse_mode="HTML")
 
         with self._app_context():
             custom_commands = list(BotCommand.query.all())
@@ -59,7 +59,8 @@ class MessageHandlingMixin:
                     self._send_message(
                         chat_id=message.chat.id,
                         text=prepared_response,
-                        parse_mode="MarkdownV2",
+                        parse_mode="HTML",
+                        escape=False,
                     )
 
         @bot.message_handler(
@@ -109,29 +110,21 @@ class MessageHandlingMixin:
         """Отправляет приветствие и регистрирует пользователя."""
 
         user = self._get_or_create_user(message.from_user)
-        text_lines = [
-            format_text("👋 ", mbold("Привет!"), separator=""),
-            "",
-            self._escape_markdown("Я — бот для общения с нейросетью GPT."),
-            "",
-            self._escape_markdown(
-                "Просто напишите свой вопрос, задачу или идею — и получите ответ прямо здесь, в чате."
-            ),
-            "",
-            self._escape_markdown("📌 Попробуйте начать с простого:"),
-            self._escape_markdown("«Составь список дел на завтра»"),
-            self._escape_markdown("или"),
-            self._escape_markdown("«Объясни разницу между SEO и контекстной рекламой простыми словами»"),
-            "",
-            self._escape_markdown("✨ Чем точнее запрос, тем полезнее будет ответ."),
-            "",
-            self._escape_markdown("Подробнее о том, как составить запрос можно узнать в разделе /help"),
-        ]
-        text = "\n".join(text_lines)
+        text = (
+            "👋 <b>Привет!</b>\n\n"
+            "Я — бот для общения с нейросетью GPT.\n\n"
+            "Просто напишите свой вопрос, задачу или идею — и получите ответ прямо здесь, в чате.\n\n"
+            "📌 Попробуйте начать с простого:\n"
+            "«Составь список дел на завтра»\n"
+            "или\n"
+            "«Объясни разницу между SEO и контекстной рекламой простыми словами».\n\n"
+            "✨ Чем точнее запрос, тем полезнее будет ответ.\n\n"
+            "Подробнее о том, как составить запрос можно узнать в разделе /help"
+        )
         self._send_message(
             chat_id=message.chat.id,
             text=text,
-            parse_mode="MarkdownV2",
+            parse_mode="HTML",
             escape=False,
         )
         self._get_logger().info("Пользователь %s (%s) начал работу", user.telegram_id, user.username)
@@ -140,40 +133,25 @@ class MessageHandlingMixin:
     def _handle_help(self, message: types.Message) -> None:
         """Отправляет инструкции по использованию бота."""
 
-        help_lines = [
-            format_text("✍️ ", mbold("Как задавать запросы"), separator=""),
-            "",
-            mbold("Хороший ответ начинается с чёткого вопроса."),
-            self._escape_markdown(
-                "Если задача размыта, ответ получится общим. Сформулируйте: что именно нужно, в каком контексте и для какой цели. Чем яснее вопрос — тем точнее результат."
-            ),
-            "",
-            mbold("Ставьте знак препинания в конце."),
-            self._escape_markdown("Иначе бот может продолжить вашу фразу вместо ответа."),
-            "",
-            mbold("Уточняйте объём и формат."),
-            self._escape_markdown(
-                "Например: 200 слов, 500 символов, 3 предложения. Формат — список, инструкция, письмо, код."
-            ),
-            "",
-            mbold("Добавляйте детали."),
-            self._escape_markdown("❌ «Расскажи про цветы»"),
-            self._escape_markdown(
-                "✅ «Составь список из 5 самых популярных комнатных растений с кратким описанием ухода»."
-            ),
-            "",
-            mbold("Формулируйте запрос одним сообщением."),
-            self._escape_markdown("Бот не собирает несколько кусочков в единую задачу."),
-            "",
-            self._escape_markdown(
-                "✨ Для сложных тем можно попросить уточняющие вопросы после описания задачи: «Задай мне уточняющие вопросы, чтобы я получил максимально точный ответ»."
-            ),
-        ]
-        help_text = "\n".join(help_lines)
+        help_text = (
+            "✍️ <b>Как задавать запросы</b>\n\n"
+            "<b>Хороший ответ начинается с чёткого вопроса.</b>\n"
+            "Если задача размыта, ответ получится общим. Сформулируйте: что именно нужно, в каком контексте и для какой цели. Чем яснее вопрос — тем точнее результат.\n\n"
+            "<b>Ставьте знак препинания в конце.</b>\n"
+            "Иначе бот может продолжить вашу фразу вместо ответа.\n\n"
+            "<b>Уточняйте объём и формат.</b>\n"
+            "Например: 200 слов, 500 символов, 3 предложения. Формат — список, инструкция, письмо, код.\n\n"
+            "<b>Добавляйте детали.</b>\n"
+            "❌ «Расскажи про цветы»\n"
+            "✅ «Составь список из 5 самых популярных комнатных растений с кратким описанием ухода».\n\n"
+            "<b>Формулируйте запрос одним сообщением.</b>\n"
+            "Бот не собирает несколько кусочков в единую задачу.\n\n"
+            "✨ Для сложных тем можно попросить уточняющие вопросы после описания задачи: «Задай мне уточняющие вопросы, чтобы я получил максимально точный ответ»."
+        )
         self._send_message(
             chat_id=message.chat.id,
             text=help_text,
-            parse_mode="MarkdownV2",
+            parse_mode="HTML",
             escape=False,
         )
 
@@ -199,15 +177,17 @@ class MessageHandlingMixin:
         self._send_message(
             chat_id=message.chat.id,
             text="Команда не найдена.",
-            parse_mode="MarkdownV2",
+            parse_mode="HTML",
         )
 
     # NOTE[agent]: Разбивает ответ ассистента на части для обхода лимитов Telegram.
-    def _prepare_response_chunks(self, text: str, *, escape: bool = True) -> List[str]:
+    def _prepare_response_chunks(self, text: str, *, escape: bool = False) -> List[str]:
         """Делит ответ LLM на части с учётом ограничений Telegram."""
 
-        processed_text = self._escape_markdown(text) if escape else text
-        continuation = self._escape_markdown("...")
+        if not text:
+            return []
+        processed_text = self._escape_html(text) if escape else text
+        continuation = "..."
         if len(processed_text) <= 4096:
             return [processed_text]
 
@@ -337,7 +317,7 @@ class MessageHandlingMixin:
         self._send_message(
             chat_id=call.message.chat.id,
             text="🧹 Контекст очищен. Продолжайте беседу.",
-            parse_mode="MarkdownV2",
+            parse_mode="HTML",
             reply_markup=self._build_inline_keyboard(),
         )
 
@@ -358,7 +338,7 @@ class MessageHandlingMixin:
         self._send_message(
             chat_id=call.message.chat.id,
             text="Выберите диалог из истории:",
-            parse_mode="MarkdownV2",
+            parse_mode="HTML",
             reply_markup=history_keyboard,
         )
 
@@ -375,7 +355,7 @@ class MessageHandlingMixin:
             self._send_message(
                 chat_id=call.message.chat.id,
                 text="Не удалось определить диалог",
-                parse_mode="MarkdownV2",
+                parse_mode="HTML",
             )
             return
         target_dialog = Dialog.query.filter_by(id=dialog_id, user_id=user.id).first()
@@ -383,7 +363,7 @@ class MessageHandlingMixin:
             self._send_message(
                 chat_id=call.message.chat.id,
                 text="Диалог не найден",
-                parse_mode="MarkdownV2",
+                parse_mode="HTML",
             )
             return
         if not target_dialog.telegram_chat_id:
@@ -403,18 +383,13 @@ class MessageHandlingMixin:
         self._delete_message_safely(history_message)
         reply_message_id, last_text = self._get_last_message_reference(target_dialog)
         title = self._format_dialog_title(target_dialog)
-        base_text = format_text(
-            "🔄 Переключаюсь на диалог ",
-            mbold(f"«{title}»"),
-            self._escape_markdown("."),
-            separator="",
-        )
+        base_text = f"🔄 Переключаюсь на диалог <b>«{html_escape(title)}»</b>."
         reply_markup = self._build_inline_keyboard()
         if reply_message_id is not None:
             self._send_message(
                 chat_id=chat_id,
                 text=base_text,
-                parse_mode="MarkdownV2",
+                parse_mode="HTML",
                 reply_markup=reply_markup,
                 reply_to_message_id=reply_message_id,
                 escape=False,
@@ -423,25 +398,24 @@ class MessageHandlingMixin:
         snippet = last_text or ""
         if snippet:
             escaped_lines = [
-                f"> {self._escape_markdown(line)}" if line else ">"
+                f"&gt; {html_escape(line)}" if line else "&gt;"
                 for line in snippet.splitlines()
-            ] or [">"]
+            ] or ["&gt;"]
             quoted_snippet = "\n".join(escaped_lines)
-            message_text = "\n".join(
-                [
-                    base_text,
-                    self._escape_markdown("📩 Последнее сообщение:"),
-                    quoted_snippet,
-                ]
+            message_text = (
+                f"{base_text}\n"
+                "📩 Последнее сообщение:\n"
+                f"<pre>{quoted_snippet}</pre>"
             )
         else:
-            message_text = "\n".join(
-                [base_text, self._escape_markdown("🚫 Последнее сообщение не найдено.")]
+            message_text = (
+                f"{base_text}\n"
+                "🚫 Последнее сообщение не найдено."
             )
         self._send_message(
             chat_id=chat_id,
             text=message_text,
-            parse_mode="MarkdownV2",
+            parse_mode="HTML",
             reply_markup=reply_markup,
             escape=False,
         )
@@ -456,7 +430,7 @@ class MessageHandlingMixin:
                 self._send_message(
                     chat_id=message.chat.id,
                     text="Ваш доступ к боту ограничен. Обратитесь к администратору.",
-                    parse_mode="MarkdownV2",
+                    parse_mode="HTML",
                 )
             return
 
@@ -518,28 +492,35 @@ class MessageHandlingMixin:
         try:
             response_text = self._query_llm(dialog, log_entry)
             db.session.refresh(log_entry)
-            escaped_response = self._escape_markdown(response_text) if response_text else ""
             usage_summary = self._format_usage_summary(dialog, log_entry)
-            if escaped_response and usage_summary:
-                response_with_usage = f"{escaped_response}\n\n{usage_summary}"
-            else:
-                response_with_usage = escaped_response or usage_summary
             reply_markup = self._build_inline_keyboard()
             if self._bot:
                 self._clear_previous_reply_markup(dialog, message.chat.id)
-                chunks = self._prepare_response_chunks(response_with_usage, escape=False)
+                chunks = self._prepare_response_chunks(response_text or "")
                 last_message_id: Optional[int] = None
                 for index, chunk in enumerate(chunks):
-                    markup = reply_markup if index == len(chunks) - 1 else None
+                    markup = None
+                    if index == len(chunks) - 1 and not usage_summary:
+                        markup = reply_markup
+                    html_chunk = self._escape_html(chunk)
                     sent = self._send_message(
                         chat_id=message.chat.id,
-                        text=chunk,
-                        parse_mode="MarkdownV2",
+                        text=html_chunk,
+                        parse_mode="HTML",
                         reply_markup=markup,
                         escape=False,
                     )
                     if markup is not None:
                         last_message_id = getattr(sent, "message_id", None)
+                if usage_summary:
+                    sent = self._send_message(
+                        chat_id=message.chat.id,
+                        text=usage_summary,
+                        parse_mode="HTML",
+                        reply_markup=reply_markup,
+                        escape=False,
+                    )
+                    last_message_id = getattr(sent, "message_id", None)
                 if last_message_id is not None:
                     log_entry.assistant_message_id = last_message_id
                     db.session.commit()
@@ -548,8 +529,9 @@ class MessageHandlingMixin:
             if self._bot:
                 self._send_message(
                     chat_id=message.chat.id,
-                    text=f"Произошла ошибка: {exc}",
-                    parse_mode="MarkdownV2",
+                    text=f"Произошла ошибка: {html_escape(str(exc))}",
+                    parse_mode="HTML",
+                    escape=False,
                 )
         finally:
             if typing_stop_event:
@@ -570,13 +552,13 @@ class MessageHandlingMixin:
         except ValueError:
             return None
 
-    # NOTE[agent]: Централизованное экранирование текста под Markdown V2.
-    def _escape_markdown(self, text: str | None) -> str:
-        """Возвращает текст с экранированными спецсимволами Markdown V2."""
+    # NOTE[agent]: Централизованное экранирование текста под HTML.
+    def _escape_html(self, text: str | None) -> str:
+        """Возвращает текст с экранированными спецсимволами HTML."""
 
         if not text:
             return ""
-        return escape_markdown(text)
+        return html_escape(text)
 
     # NOTE[agent]: Унифицированная отправка сообщений с автоматическим экранированием.
     def _send_message(
@@ -584,18 +566,18 @@ class MessageHandlingMixin:
         *,
         chat_id: int,
         text: str,
-        parse_mode: str | None = "MarkdownV2",
-        escape: bool = True,
+        parse_mode: str | None = "HTML",
+        escape: bool = False,
         **kwargs: Any,
     ) -> Any:
-        """Отправляет сообщение через бота с учётом экранирования Markdown."""
+        """Отправляет сообщение через бота с учётом экранирования HTML."""
 
         if not self._bot:
             return None
         safe_text = text
-        final_parse_mode = parse_mode or "MarkdownV2"
-        if escape and final_parse_mode == "MarkdownV2":
-            safe_text = self._escape_markdown(text)
+        final_parse_mode = parse_mode or "HTML"
+        if escape and final_parse_mode == "HTML":
+            safe_text = self._escape_html(text)
         return self._bot.send_message(
             chat_id=chat_id,
             text=safe_text,
