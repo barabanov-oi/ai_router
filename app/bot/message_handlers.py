@@ -502,11 +502,10 @@ class MessageHandlingMixin:
                     markup = None
                     if index == len(chunks) - 1 and not usage_summary:
                         markup = reply_markup
-                    html_chunk = self._escape_html(chunk)
                     sent = self._send_message(
                         chat_id=message.chat.id,
-                        text=html_chunk,
-                        parse_mode="HTML",
+                        text=chunk,
+                        parse_mode="Markdown",
                         reply_markup=markup,
                         escape=False,
                     )
