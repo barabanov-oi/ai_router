@@ -174,38 +174,91 @@ class DialogManagementMixin:
         return prepared or f"Диалог #{dialog.id}"
 
     # NOTE[agent]: Подсчитывает накопленное использование токенов.
-    def _calculate_dialog_usage(self, dialog: Dialog, model_id: int) -> Tuple[int, int, int]:
-        """Возвращает суммарные input/output/total токены в диалоге."""
+    def _calculate_dialog_usage(
+        self,
+        dialog: Dialog,
+        model_id: Optional[int] = None,
+    ) -> Tuple[int, int, int]:
+        """Возвращает суммарные input/output/total токены в диалоге.
 
-        prompt_sum, completion_sum, total_sum = (
-            db.session.query(
-                func.coalesce(func.sum(MessageLog.prompt_tokens), 0),
-                func.coalesce(func.sum(MessageLog.completion_tokens), 0),
-                func.coalesce(func.sum(MessageLog.tokens_used), 0),
-            )
-            .filter(
-                MessageLog.dialog_id == dialog.id,
-                MessageLog.model_id == model_id,
-            )
-            .one()
-        )
+        Args:
+            dialog: Диалог, для которого требуется собрать статистику.
+            model_id: Идентификатор модели для фильтрации или None для всех моделей.
+
+        Returns:
+            Кортеж из суммарных prompt, completion и total токенов.
+        """
+
+        query = db.session.query(
+            func.coalesce(func.sum(MessageLog.prompt_tokens), 0),
+            func.coalesce(func.sum(MessageLog.completion_tokens), 0),
+            func.coalesce(func.sum(MessageLog.tokens_used), 0),
+        ).filter(MessageLog.dialog_id == dialog.id)
+        if model_id is not None:
+            query = query.filter(MessageLog.model_id == model_id)
+        prompt_sum, completion_sum, total_sum = query.one()
         return int(prompt_sum), int(completion_sum), int(total_sum)
 
-    # NOTE[agent]: Формирует строку с информацией об использовании токенов.
-    def _format_usage_summary(self, dialog: Dialog, log_entry: MessageLog) -> str:
-        """Возвращает текст с информацией об израсходованных токенах."""
+    # NOTE[agent]: Метод определяет актуальный лимит токенов для диалога.
+    def _determine_effective_dialog_limit(
+        self,
+        *,
+        dialog: Dialog,
+        log_entry: Optional[MessageLog] = None,
+    ) -> Optional[int]:
+        """Определяет, какой лимит токенов применим к диалогу.
 
-        if not log_entry.model_id:
-            total_limit = 20000
-            prompt_total = log_entry.prompt_tokens
-            completion_total = log_entry.completion_tokens
-            total_tokens = log_entry.tokens_used
-        else:
-            prompt_total, completion_total, total_tokens = self._calculate_dialog_usage(
-                dialog, log_entry.model_id
+        Args:
+            dialog: Диалог, для которого необходимо вычислить ограничение.
+            log_entry: Последняя запись лога, связанная с ответом LLM.
+
+        Returns:
+            Положительный лимит токенов или None, если ограничение не задано.
+        """
+
+        configured_limit: Optional[int] = None
+        settings_service = getattr(self, "_settings", None)
+        if settings_service is not None and hasattr(settings_service, "get_int"):
+            configured_limit = settings_service.get_int("dialog_token_limit")
+        if configured_limit is not None and configured_limit <= 0:
+            configured_limit = None
+
+        source_entry = log_entry
+        if source_entry is None:
+            source_entry = (
+                MessageLog.query.filter_by(dialog_id=dialog.id)
+                .filter(MessageLog.model_id.isnot(None))
+                .order_by(MessageLog.message_index.desc())
+                .first()
             )
-            limit_source = log_entry.model.dialog_token_limit if log_entry.model else None
-            total_limit = limit_source or 20000
+        model_limit: Optional[int] = None
+        if source_entry and source_entry.model:
+            raw_limit = int(source_entry.model.dialog_token_limit or 0)
+            if raw_limit > 0:
+                model_limit = raw_limit
+
+        limits = [value for value in (configured_limit, model_limit) if value and value > 0]
+        if not limits:
+            return None
+        return min(limits)
+
+    # NOTE[agent]: Формирует строку с информацией об использовании токенов.
+    def _format_usage_summary(
+        self, dialog: Dialog, log_entry: MessageLog
+    ) -> Tuple[str, int, Optional[int]]:
+        """Возвращает текст с информацией об израсходованных токенах.
+
+        Args:
+            dialog: Диалог, для которого требуется статистика.
+            log_entry: Запись лога последнего ответа LLM.
+
+        Returns:
+            Кортеж из текстового описания, общего числа токенов и лимита.
+        """
+
+        prompt_total, completion_total, total_tokens = self._calculate_dialog_usage(dialog)
+        total_limit = self._determine_effective_dialog_limit(dialog=dialog, log_entry=log_entry)
+        limit_display: int | str = total_limit if total_limit is not None else "∞"
         def _italic(value: int | str) -> str:
             """Возвращает значение, выделенное курсивом в HTML."""
 
@@ -215,10 +268,10 @@ class DialogManagementMixin:
         question_label = " (вопрос: "
         answer_label = ", ответ: "
         closing_bracket = ")"
-        total_text = _italic(f"{total_tokens} / {total_limit}")
+        total_text = _italic(f"{total_tokens} / {limit_display}")
         prompt_text = _italic(prompt_total)
         completion_text = _italic(completion_total)
-        return (
+        summary_text = (
             f"{html_escape(prefix)} "
             f"{total_text}"
             f"{html_escape(question_label)}"
@@ -227,6 +280,7 @@ class DialogManagementMixin:
             f"{completion_text}"
             f"{html_escape(closing_bracket)}"
         )
+        return summary_text, total_tokens, total_limit
 
     # NOTE[agent]: Определяет, как сослаться на последнее сообщение диалога.
     def _get_last_message_reference(self, dialog: Dialog) -> Tuple[Optional[int], Optional[str]]:

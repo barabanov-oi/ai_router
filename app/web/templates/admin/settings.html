@@ -16,6 +16,9 @@
   <label>Режим по умолчанию
     <input type="text" name="default_mode" value="{{ settings.get('default_mode', 'default') }}">
   </label>
+  <label>Лимит токенов на диалог
+    <input type="number" name="dialog_token_limit" min="0" value="{{ settings.get('dialog_token_limit', '') }}" placeholder="0 — без ограничений">
+  </label>
   <label>Активная модель
     <select name="active_model_id">
       <option value="">-- не выбрано --</option>

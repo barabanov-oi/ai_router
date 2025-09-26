@@ -459,7 +459,13 @@ def manage_settings() -> Union[Response, str]:
     """Позволяет обновить интеграционные настройки системы."""
 
     settings_service = SettingsService()
-    keys = ["telegram_bot_token", "webhook_url", "webhook_secret", "default_mode"]
+    keys = [
+        "telegram_bot_token",
+        "webhook_url",
+        "webhook_secret",
+        "default_mode",
+        "dialog_token_limit",
+    ]
     if request.method == "POST":
         for key in keys:
             settings_service.set(key, request.form.get(key, ""))

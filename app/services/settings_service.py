@@ -48,6 +48,31 @@ class SettingsService:
             setting.update_value(str(value))
         db.session.commit()
 
+    # NOTE[agent]: Метод возвращает целочисленное значение настройки.
+    def get_int(self, key: str, default: Optional[int] = None) -> Optional[int]:
+        """Преобразует значение настройки к целому числу.
+
+        Args:
+            key: Ключ искомой настройки.
+            default: Значение по умолчанию, если ключ отсутствует или не преобразуется.
+
+        Returns:
+            Целочисленное значение настройки или default, если преобразование невозможно.
+        """
+
+        setting = AppSetting.query.filter_by(key=key).first()
+        if not setting or setting.value is None or setting.value == "":
+            return default
+        try:
+            return int(setting.value)
+        except (TypeError, ValueError):
+            current_app.logger.warning(
+                "Настройка %s имеет некорректное числовое значение: %s",
+                key,
+                setting.value,
+            )
+            return default
+
     # NOTE[agent]: Метод возвращает множество всех настроек.
     def all_settings(self) -> Dict[str, str]:
         """Возвращает все настройки в виде словаря."""

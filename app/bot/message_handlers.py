@@ -232,6 +232,26 @@ class MessageHandlingMixin:
 
         return chunks
 
+    # NOTE[agent]: Формирует предупреждение о превышении лимита токенов.
+    def _build_dialog_limit_message(self, limit: int, total: int) -> str:
+        """Возвращает текст уведомления о достигнутом лимите токенов.
+
+        Args:
+            limit: Установленный лимит токенов для диалога.
+            total: Фактическое количество израсходованных токенов.
+
+        Returns:
+            Строку с предупреждением и рекомендацией начать новый диалог.
+        """
+
+        limit_value = f"{limit:,}".replace(",", " ")
+        total_value = f"{total:,}".replace(",", " ")
+        return (
+            "⚠️ <b>Лимит токенов для диалога исчерпан.</b>\n"
+            f"Использовано {total_value} токенов при лимите {limit_value}.\n"
+            "Начните новый диалог или выберите ранее сохранённый в истории."
+        )
+
     # NOTE[agent]: Удаление inline-клавиатуры у предыдущих ответов LLM.
     def _clear_previous_reply_markup(self, dialog: Dialog, chat_id: int) -> None:
         """Отключает клавиатуру у всех ранее отправленных ответов ассистента."""
@@ -463,6 +483,28 @@ class MessageHandlingMixin:
 
         typing_stop_event: threading.Event | None = None
         typing_thread: threading.Thread | None = None
+
+        limit_before = self._determine_effective_dialog_limit(dialog=dialog)
+        if limit_before is not None:
+            _, _, total_before = self._calculate_dialog_usage(dialog)
+            if total_before >= limit_before:
+                if self._bot:
+                    self._clear_previous_reply_markup(dialog, message.chat.id)
+                warning_text = self._build_dialog_limit_message(limit_before, total_before)
+                reply_markup = self._build_inline_keyboard()
+                sent_warning = self._send_message(
+                    chat_id=message.chat.id,
+                    text=warning_text,
+                    parse_mode="HTML",
+                    reply_markup=reply_markup,
+                    escape=False,
+                )
+                log_entry.llm_response = warning_text
+                if sent_warning is not None:
+                    log_entry.assistant_message_id = getattr(sent_warning, "message_id", None)
+                db.session.commit()
+                return
+
         if self._bot:
             self._bot.send_chat_action(message.chat.id, "typing")
 
@@ -492,15 +534,20 @@ class MessageHandlingMixin:
         try:
             response_text = self._query_llm(dialog, log_entry)
             db.session.refresh(log_entry)
-            usage_summary = self._format_usage_summary(dialog, log_entry)
+            usage_summary, total_tokens, limit_value = self._format_usage_summary(dialog, log_entry)
             reply_markup = self._build_inline_keyboard()
+            limit_exceeded = limit_value is not None and total_tokens >= limit_value
+            warning_text: Optional[str] = None
+            if limit_exceeded and limit_value is not None:
+                warning_text = self._build_dialog_limit_message(limit_value, total_tokens)
             if self._bot:
                 self._clear_previous_reply_markup(dialog, message.chat.id)
                 chunks = self._prepare_response_chunks(response_text or "")
                 last_message_id: Optional[int] = None
                 for index, chunk in enumerate(chunks):
                     markup = None
-                    if index == len(chunks) - 1 and not usage_summary:
+                    is_last_chunk = index == len(chunks) - 1
+                    if is_last_chunk and not usage_summary and not limit_exceeded:
                         markup = reply_markup
                     sent = self._send_message(
                         chat_id=message.chat.id,
@@ -512,9 +559,20 @@ class MessageHandlingMixin:
                     if markup is not None:
                         last_message_id = getattr(sent, "message_id", None)
                 if usage_summary:
+                    summary_markup = None if limit_exceeded else reply_markup
                     sent = self._send_message(
                         chat_id=message.chat.id,
                         text=usage_summary,
+                        parse_mode="HTML",
+                        reply_markup=summary_markup,
+                        escape=False,
+                    )
+                    if summary_markup is not None:
+                        last_message_id = getattr(sent, "message_id", None)
+                if limit_exceeded and warning_text:
+                    sent = self._send_message(
+                        chat_id=message.chat.id,
+                        text=warning_text,
                         parse_mode="HTML",
                         reply_markup=reply_markup,
                         escape=False,
