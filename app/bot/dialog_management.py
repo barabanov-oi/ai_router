@@ -5,8 +5,9 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Dict, Iterable, List, Optional, Tuple
 
+from html import escape as html_escape
+
 from telebot import types
-from telebot.formatting import escape_markdown
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 
@@ -206,14 +207,14 @@ class DialogManagementMixin:
             limit_source = log_entry.model.dialog_token_limit if log_entry.model else None
             total_limit = limit_source or 20000
         def _italic(value: int | str) -> str:
-            """Возвращает значение, выделенное курсивом в MarkdownV2."""
+            """Возвращает значение, выделенное курсивом в HTML-разметке."""
 
-            return f"_{escape_markdown(str(value))}_"
+            return f"<i>{self._escape_html(str(value))}</i>"
 
-        prefix = escape_markdown("📊 Использовано токенов:")
-        question_label = escape_markdown(" (вопрос: ")
-        answer_label = escape_markdown(", ответ: ")
-        closing_bracket = escape_markdown(")")
+        prefix = self._escape_html("📊 Использовано токенов:")
+        question_label = self._escape_html(" (вопрос: ")
+        answer_label = self._escape_html(", ответ: ")
+        closing_bracket = self._escape_html(")")
         total_text = _italic(f"{total_tokens} / {total_limit}")
         prompt_text = _italic(prompt_total)
         completion_text = _italic(completion_total)
@@ -258,6 +259,13 @@ class DialogManagementMixin:
         if last_text:
             return None, last_text[-150:]
         return None, None
+
+    def _escape_html(self, text: str | None) -> str:
+        """Возвращает текст, экранированный для HTML-разметки Telegram."""
+
+        if not text:
+            return ""
+        return html_escape(text, quote=False)
 
     # NOTE[agent]: Комбинация настроек модели с параметрами режима.
     def _get_model_config(self, mode_definition: dict) -> Tuple[ModelConfig, dict, Optional[str]]:
