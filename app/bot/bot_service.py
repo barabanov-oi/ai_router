@@ -17,6 +17,11 @@ from .dialog_management import DialogManagementMixin
 from .message_handlers import MessageHandlingMixin
 
 
+# NOTE[agent]: Исключение для сигнализации о зависшем polling-потоке.
+class PollingStopTimeoutError(RuntimeError):
+    """Исключение, сигнализирующее о незавершившемся потоке polling."""
+
+
 class BotLifecycleMixin:
     """Содержит операции запуска, остановки и инфраструктуру бота."""
 
@@ -30,9 +35,26 @@ class BotLifecycleMixin:
     def start_polling(self) -> None:
         """Запускает бота в режиме polling в отдельном потоке."""
 
+        if self._polling_thread is not None and self._stop_event.is_set():
+            message = (
+                "Невозможно запустить polling: предыдущая остановка ещё выполняется"
+            )
+            self._get_logger().error(message)
+            raise RuntimeError(message)
+
         if self.is_running():
             self._get_logger().info("Бот уже запущен")
             return
+
+        if self._polling_thread is not None:
+            try:
+                self.stop()
+            except PollingStopTimeoutError as exc:
+                message = (
+                    "Невозможно запустить polling: предыдущий поток ещё завершается"
+                )
+                self._get_logger().error(message)
+                raise RuntimeError(message) from exc
 
         token = self._settings.get("telegram_bot_token")
         if not token:
@@ -45,20 +67,42 @@ class BotLifecycleMixin:
         self._get_logger().info("Запущен polling Telegram-бота")
 
     # NOTE[agent]: Остановка бота и завершение фонового потока.
-    def stop(self) -> None:
-        """Останавливает работу бота."""
+    def stop(self, timeout: float = 5.0) -> None:
+        """Останавливает работу бота.
+
+        Args:
+            timeout: Время ожидания завершения потока polling.
+
+        Raises:
+            PollingStopTimeoutError: Если поток polling не успел завершиться.
+        """
 
         self._stop_event.set()
-        if self._bot:
+        bot = self._bot
+        if bot:
             try:
-                self._bot.stop_polling()
+                bot.stop_polling()
             except Exception:  # pylint: disable=broad-except
                 self._get_logger().exception("Ошибка при остановке polling")
-        self._bot = None
-        if self._polling_thread and self._polling_thread.is_alive():
-            self._polling_thread.join(timeout=5)
-        self._polling_thread = None
-        self._get_logger().info("Polling бота остановлен")
+
+        thread = self._polling_thread
+        if thread and thread.is_alive():
+            thread.join(timeout=timeout)
+            if thread.is_alive():
+                self._get_logger().error(
+                    "Поток polling %s не завершился за %.1f секунды", thread.name, timeout
+                )
+                raise PollingStopTimeoutError(
+                    f"Поток polling не завершился за {timeout:.1f} секунды"
+                )
+
+        if thread is not None:
+            self._polling_thread = None
+
+        if self._polling_thread is None:
+            self._stop_event = threading.Event()
+            self._bot = None
+            self._get_logger().info("Polling бота остановлен")
 
     # NOTE[agent]: Настройка webhook: установка URL и создание экземпляра бота.
     def start_webhook(self) -> str:
