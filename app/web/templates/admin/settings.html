@@ -27,6 +27,12 @@
       {% endfor %}
     </select>
   </label>
+  <label>Получатели уведомлений об ошибках (user_id через запятую или пробел)
+    <input type="text" name="error_notification_user_ids" value="{{ settings.get('error_notification_user_ids', '') }}" placeholder="Например: 12345, 67890">
+  </label>
+  <label>Сообщение приостановки работы бота
+    <textarea name="bot_pause_message" placeholder="Текст, который увидят пользователи при приостановке. Поддерживается HTML.">{{ settings.get('bot_pause_message', '') }}</textarea>
+  </label>
   <button class="btn" type="submit">Сохранить</button>
 </form>
 {% endblock %}

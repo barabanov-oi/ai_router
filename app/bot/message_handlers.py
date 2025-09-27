@@ -7,6 +7,10 @@ from html import escape as html_escape
 
 from typing import Any, List, Optional
 
+
+ERROR_USER_MESSAGE = "Произошла ошибка.\n<i>Наша команда уже работает над её устранением.</i>"
+DEFAULT_PAUSE_MESSAGE = "Бот временно недоступен. Пожалуйста, попробуйте позже."
+
 from telebot import TeleBot, types
 
 from ..models import BotCommand, Dialog, MessageLog, db
@@ -56,6 +60,8 @@ class MessageHandlingMixin:
                 """Отправляет ответ, сохранённый для пользовательской команды."""
 
                 with self._app_context():
+                    if self._respond_if_paused(message.chat.id):
+                        return
                     self._send_message(
                         chat_id=message.chat.id,
                         text=prepared_response,
@@ -105,11 +111,136 @@ class MessageHandlingMixin:
 
         return bot
 
+    # NOTE[agent]: Проверяет, активирован ли режим приостановки бота.
+    def _is_bot_paused(self) -> bool:
+        """Сообщает, включён ли режим приостановки работы бота."""
+
+        raw_value = (self._settings.get("bot_paused", "0") or "").strip().lower()
+        return raw_value in {"1", "true", "yes", "on"}
+
+    # NOTE[agent]: Возвращает текст ответа для режима приостановки.
+    def _get_pause_message(self) -> str:
+        """Извлекает текст, отправляемый при приостановке бота."""
+
+        message = (self._settings.get("bot_pause_message", "") or "").strip()
+        return message or DEFAULT_PAUSE_MESSAGE
+
+    # NOTE[agent]: Отправляет сообщение о приостановке пользователю и прекращает обработку.
+    def _respond_if_paused(self, chat_id: int) -> bool:
+        """Отправляет уведомление, если бот находится в режиме паузы."""
+
+        if not self._is_bot_paused():
+            return False
+        self._send_message(
+            chat_id=chat_id,
+            text=self._get_pause_message(),
+            parse_mode="HTML",
+            escape=False,
+        )
+        return True
+
+    # NOTE[agent]: Обрабатывает паузу для callback-запросов.
+    def _respond_if_paused_callback(self, call: types.CallbackQuery) -> bool:
+        """Оповещает пользователя о паузе и завершает обработку callback."""
+
+        if not self._is_bot_paused():
+            return False
+        if self._bot:
+            try:
+                self._bot.answer_callback_query(call.id, text="Работа бота приостановлена")
+            except Exception:  # pylint: disable=broad-except
+                self._get_logger().debug("Не удалось ответить на callback при паузе", exc_info=True)
+        chat_id = call.message.chat.id if call.message else call.from_user.id
+        self._send_message(
+            chat_id=chat_id,
+            text=self._get_pause_message(),
+            parse_mode="HTML",
+            escape=False,
+        )
+        return True
+
+    # NOTE[agent]: Возвращает список получателей уведомлений об ошибках.
+    def _get_error_notification_recipients(self) -> List[int]:
+        """Собирает идентификаторы чатов для отправки уведомлений об ошибках."""
+
+        raw_value = (self._settings.get("error_notification_user_ids", "") or "").replace(",", " ")
+        normalized = raw_value.replace(";", " ").replace("\n", " ").replace("\t", " ")
+        recipients: List[int] = []
+        for token in normalized.split():
+            try:
+                recipients.append(int(token))
+            except ValueError:
+                self._get_logger().debug("Пропущен некорректный user_id для уведомлений: %s", token)
+        return recipients
+
+    # NOTE[agent]: Отправляет уведомление администраторам о критической ошибке.
+    def _notify_error_subscribers(
+        self,
+        *,
+        message: Optional[types.Message],
+        exception: Exception,
+    ) -> None:
+        """Рассылает административное уведомление о падении обработки сообщения."""
+
+        if not self._bot:
+            return
+        recipients = self._get_error_notification_recipients()
+        if not recipients:
+            return
+        unique_recipients = []
+        seen: set[int] = set()
+        for recipient in recipients:
+            if recipient in seen:
+                continue
+            seen.add(recipient)
+            unique_recipients.append(recipient)
+        user_id: Optional[int] = None
+        username: Optional[str] = None
+        chat_id: Optional[int] = None
+        message_text: Optional[str] = None
+        if message:
+            if message.from_user:
+                user_id = message.from_user.id
+                username = message.from_user.username
+            if message.chat:
+                chat_id = message.chat.id
+            message_text = message.text
+        user_parts: List[str] = []
+        if user_id is not None:
+            user_parts.append(f"ID: <code>{user_id}</code>")
+        if username:
+            user_parts.append(f"@{html_escape(username)}")
+        if chat_id is not None and chat_id != user_id:
+            user_parts.append(f"chat: <code>{chat_id}</code>")
+        description_lines = ["⚠️ <b>Ошибка при обработке сообщения</b>"]
+        if user_parts:
+            description_lines.append("Пользователь — " + ", ".join(user_parts))
+        if message_text:
+            description_lines.append(f"Запрос:\n<pre>{html_escape(message_text)}</pre>")
+        description_lines.append(f"Ошибка: <code>{html_escape(str(exception))}</code>")
+        notification_text = "\n".join(description_lines)
+        for recipient in unique_recipients:
+            if chat_id is not None and recipient == chat_id:
+                continue
+            try:
+                self._bot.send_message(
+                    chat_id=recipient,
+                    text=notification_text,
+                    parse_mode="HTML",
+                )
+            except Exception:  # pylint: disable=broad-except
+                self._get_logger().exception(
+                    "Не удалось отправить уведомление об ошибке получателю %s",
+                    recipient,
+                )
+
     # NOTE[agent]: Приветственное сообщение и первичная регистрация пользователя.
     def _handle_start(self, message: types.Message) -> None:
         """Отправляет приветствие и регистрирует пользователя."""
 
         user = self._get_or_create_user(message.from_user)
+        if self._respond_if_paused(message.chat.id):
+            return
         text = (
             "👋 <b>Привет!</b>\n\n"
             "Я — бот для общения с нейросетью GPT.\n\n"
@@ -126,6 +257,7 @@ class MessageHandlingMixin:
             text=text,
             parse_mode="HTML",
             escape=False,
+            reply_markup=self._build_inline_keyboard(),
         )
         self._get_logger().info("Пользователь %s (%s) начал работу", user.telegram_id, user.username)
 
@@ -133,6 +265,8 @@ class MessageHandlingMixin:
     def _handle_help(self, message: types.Message) -> None:
         """Отправляет инструкции по использованию бота."""
 
+        if self._respond_if_paused(message.chat.id):
+            return
         help_text = (
             "✍️ <b>Как задавать запросы</b>\n\n"
             "<b>Хороший ответ начинается с чёткого вопроса.</b>\n"
@@ -153,6 +287,7 @@ class MessageHandlingMixin:
             text=help_text,
             parse_mode="HTML",
             escape=False,
+            reply_markup=self._build_inline_keyboard(),
         )
 
     def _extract_command(self, text: str) -> str | None:
@@ -174,6 +309,8 @@ class MessageHandlingMixin:
     def _handle_unknown_command(self, message: types.Message) -> None:
         """Отправляет уведомление об отсутствующей команде."""
 
+        if self._respond_if_paused(message.chat.id):
+            return
         self._send_message(
             chat_id=message.chat.id,
             text="Команда не найдена.",
@@ -320,6 +457,8 @@ class MessageHandlingMixin:
     def _handle_new_dialog(self, call: types.CallbackQuery) -> None:
         """Создаёт новый диалог для пользователя."""
 
+        if self._respond_if_paused_callback(call):
+            return
         user = self._get_or_create_user(call.from_user)
         self._remove_message_reply_markup(call.message)
         current_dialog = self._get_active_dialog(user)
@@ -345,6 +484,8 @@ class MessageHandlingMixin:
     def _handle_dialog_history(self, call: types.CallbackQuery) -> None:
         """Отправляет пользователю клавиатуру с историей диалогов."""
 
+        if self._respond_if_paused_callback(call):
+            return
         user = self._get_or_create_user(call.from_user)
         if not self._bot:
             return
@@ -366,6 +507,8 @@ class MessageHandlingMixin:
     def _handle_switch_dialog(self, call: types.CallbackQuery) -> None:
         """Переключает пользователя на выбранный диалог из истории."""
 
+        if self._respond_if_paused_callback(call):
+            return
         if not self._bot:
             return
         self._bot.answer_callback_query(call.id)
@@ -445,6 +588,8 @@ class MessageHandlingMixin:
         """Обрабатывает входящее текстовое сообщение и запрашивает ответ LLM."""
 
         user = self._get_or_create_user(message.from_user)
+        if self._respond_if_paused(message.chat.id):
+            return
         if not user.is_active:
             if self._bot:
                 self._send_message(
@@ -586,10 +731,12 @@ class MessageHandlingMixin:
             if self._bot:
                 self._send_message(
                     chat_id=message.chat.id,
-                    text=f"Произошла ошибка: {html_escape(str(exc))}",
+                    text=ERROR_USER_MESSAGE,
                     parse_mode="HTML",
+                    reply_markup=self._build_inline_keyboard(),
                     escape=False,
                 )
+            self._notify_error_subscribers(message=message, exception=exc)
         finally:
             if typing_stop_event:
                 typing_stop_event.set()

@@ -39,6 +39,19 @@
 <form id="stop-bot" class="inline" method="post" action="{{ url_for('admin.api_stop_bot') }}" onsubmit="return sendApi(event);">
   <button class="btn danger" type="submit">Остановить бота</button>
 </form>
+{% set paused_value = (settings.get('bot_paused', '') or '').lower() %}
+{% set is_paused = paused_value in ['1', 'true', 'yes', 'on'] %}
+<p>Режим приостановки: {% if is_paused %}<strong style="color:#e67e22;">активен</strong>{% else %}<strong style="color:green;">выключен</strong>{% endif %}</p>
+<form id="toggle-pause" class="inline" method="post" action="{{ url_for('admin.api_toggle_bot_pause') }}" onsubmit="return sendApi(event);">
+  <button class="btn {% if is_paused %}secondary{% else %}danger{% endif %}" type="submit">{% if is_paused %}Возобновить работу бота{% else %}Приостановить бота{% endif %}</button>
+</form>
+{% set pause_message = settings.get('bot_pause_message', '').strip() %}
+{% if pause_message %}
+<p>Сообщение приостановки:</p>
+<pre>{{ pause_message }}</pre>
+{% else %}
+<p>Сообщение приостановки не задано. Используется текст по умолчанию.</p>
+{% endif %}
 <h3>Активная модель</h3>
 {% if active_model %}
 <div class="active-model-badge" title="{{ active_model.model }}">

@@ -465,6 +465,8 @@ def manage_settings() -> Union[Response, str]:
         "webhook_secret",
         "default_mode",
         "dialog_token_limit",
+        "error_notification_user_ids",
+        "bot_pause_message",
     ]
     if request.method == "POST":
         for key in keys:
@@ -651,6 +653,19 @@ def api_stop_bot() -> Response:
         return jsonify({"status": "error", "message": "Bot manager is not configured"}), 500
     bot_manager.stop()
     return jsonify({"status": "ok"})
+
+
+# NOTE[agent]: API-метод переключает режим приостановки бота.
+@admin_bp.route("/api/bot/toggle-pause", methods=["POST"])
+def api_toggle_bot_pause() -> Response:
+    """Активирует или отключает режим приостановки Telegram-бота."""
+
+    settings_service = SettingsService()
+    current_value = (settings_service.get("bot_paused", "0") or "").strip().lower()
+    is_paused = current_value in {"1", "true", "yes", "on"}
+    new_value = "0" if is_paused else "1"
+    settings_service.set("bot_paused", new_value)
+    return jsonify({"status": "ok", "paused": new_value == "1"})
 
 
 # NOTE[agent]: Обработчик входящих webhook-запросов от Telegram.
