@@ -93,6 +93,26 @@ def test_stop_waits_for_thread_before_cleanup() -> None:
     assert not manager._stop_event.is_set()
 
 
+def test_stop_waits_without_deadline() -> None:
+    """Проверяет, что stop() ждёт завершения потока без ограничения max_wait."""
+
+    manager = _LifecycleStub()
+
+    def slow_worker() -> None:
+        manager._stop_event.wait()
+        time.sleep(0.12)
+
+    thread = threading.Thread(target=slow_worker, name="test-polling", daemon=True)
+    manager._polling_thread = thread
+    thread.start()
+
+    manager.stop(timeout=0.01)
+
+    assert manager._polling_thread is None
+    assert manager._bot is None
+    assert not manager._stop_event.is_set()
+
+
 class _FailingStopManager(BotLifecycleMixin):
     """Менеджер, у которого остановка polling всегда завершается тайм-аутом."""
 
