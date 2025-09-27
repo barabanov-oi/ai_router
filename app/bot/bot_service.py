@@ -35,6 +35,8 @@ class BotLifecycleMixin:
     def start_polling(self) -> None:
         """Запускает бота в режиме polling в отдельном потоке."""
 
+        self._cleanup_completed_polling_thread()
+
         if self._polling_thread is not None and self._stop_event.is_set():
             message = (
                 "Невозможно запустить polling: предыдущая остановка ещё выполняется"
@@ -89,20 +91,16 @@ class BotLifecycleMixin:
         if thread and thread.is_alive():
             thread.join(timeout=timeout)
             if thread.is_alive():
+                error = PollingStopTimeoutError(
+                    f"Поток polling не завершился за {timeout:.1f} секунды"
+                )
                 self._get_logger().error(
                     "Поток polling %s не завершился за %.1f секунды", thread.name, timeout
                 )
-                raise PollingStopTimeoutError(
-                    f"Поток polling не завершился за {timeout:.1f} секунды"
-                )
+                self._notify_polling_error(error)
+                raise error
 
-        if thread is not None:
-            self._polling_thread = None
-
-        if self._polling_thread is None:
-            self._stop_event = threading.Event()
-            self._bot = None
-            self._get_logger().info("Polling бота остановлен")
+        self._cleanup_completed_polling_thread()
 
     # NOTE[agent]: Настройка webhook: установка URL и создание экземпляра бота.
     def start_webhook(self) -> str:
@@ -143,8 +141,9 @@ class BotLifecycleMixin:
             try:
                 with self._app_context():
                     self._bot.infinity_polling(timeout=60, long_polling_timeout=60)
-            except Exception:  # pylint: disable=broad-except
+            except Exception as exc:  # pylint: disable=broad-except
                 self._get_logger().exception("Ошибка в polling, перезапуск через 5 секунд")
+                self._notify_polling_error(exc)
                 time.sleep(5)
 
     # NOTE[agent]: Возвращает логгер, привязанный к Flask приложению.
@@ -179,6 +178,33 @@ class BotLifecycleMixin:
         """Сохраняет ссылку на Flask-приложение."""
 
         self._app = app
+
+    # NOTE[agent]: Оповещает администраторов об ошибке polling, если поддерживается.
+    def _notify_polling_error(self, exception: Exception) -> None:
+        """Отправляет уведомление об ошибке polling при наличии подписчиков."""
+
+        notifier = getattr(self, "_notify_error_subscribers", None)
+        if callable(notifier):
+            try:
+                notifier(message=None, exception=exception)
+            except Exception:  # pylint: disable=broad-except
+                self._get_logger().exception(
+                    "Не удалось отправить уведомление об ошибке polling"
+                )
+
+    # NOTE[agent]: Завершает остановку polling, если поток уже завершился.
+    def _cleanup_completed_polling_thread(self) -> None:
+        """Сбрасывает состояние после остановки polling, когда поток завершён."""
+
+        thread = self._polling_thread
+        if thread is None:
+            return
+        if thread.is_alive():
+            return
+        self._polling_thread = None
+        self._stop_event = threading.Event()
+        self._bot = None
+        self._get_logger().info("Polling бота остановлен")
 
 
 # NOTE[agent]: Класс инкапсулирует запуск бота, обработку команд и диалогов.

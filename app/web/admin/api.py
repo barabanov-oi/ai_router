@@ -6,7 +6,7 @@ from typing import Any, Dict, Optional
 
 from flask import Response, current_app, jsonify, request
 
-from ...bot.bot_service import TelegramBotManager
+from ...bot.bot_service import PollingStopTimeoutError, TelegramBotManager
 from ...services.settings_service import SettingsService
 from . import admin_bp
 
@@ -65,7 +65,17 @@ def api_stop_bot() -> Response:
     bot_manager: Optional[TelegramBotManager] = current_app.extensions.get("bot_manager")  # type: ignore[assignment]
     if not bot_manager:
         return jsonify({"status": "error", "message": "Bot manager is not configured"}), 500
-    bot_manager.stop()
+    try:
+        bot_manager.stop()
+    except PollingStopTimeoutError as exc:
+        current_app.logger.exception("Не удалось остановить polling вовремя")
+        return (
+            jsonify({
+                "status": "error",
+                "message": str(exc),
+            }),
+            503,
+        )
     return jsonify({"status": "ok"})
 
 
