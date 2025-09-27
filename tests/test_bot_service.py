@@ -59,14 +59,34 @@ def test_stop_raises_if_thread_does_not_finish() -> None:
     thread.start()
 
     with pytest.raises(PollingStopTimeoutError):
-        manager.stop(timeout=0.01)
+        manager.stop(timeout=0.01, max_wait=0.02)
 
     assert manager._polling_thread is thread
     assert manager._bot is not None
     assert manager._stop_event.is_set()
 
     thread.join(timeout=1)
-    manager.stop()
+    manager.stop(max_wait=1.0)
+
+    assert manager._polling_thread is None
+    assert manager._bot is None
+    assert not manager._stop_event.is_set()
+
+
+def test_stop_waits_for_thread_before_cleanup() -> None:
+    """Убеждается, что stop() дожидается завершения потока при увеличенном ожидании."""
+
+    manager = _LifecycleStub()
+
+    def slow_worker() -> None:
+        manager._stop_event.wait()
+        time.sleep(0.15)
+
+    thread = threading.Thread(target=slow_worker, name="test-polling", daemon=True)
+    manager._polling_thread = thread
+    thread.start()
+
+    manager.stop(timeout=0.01, max_wait=0.5)
 
     assert manager._polling_thread is None
     assert manager._bot is None

@@ -69,11 +69,12 @@ class BotLifecycleMixin:
         self._get_logger().info("Запущен polling Telegram-бота")
 
     # NOTE[agent]: Остановка бота и завершение фонового потока.
-    def stop(self, timeout: float = 5.0) -> None:
+    def stop(self, timeout: float = 5.0, *, max_wait: Optional[float] = None) -> None:
         """Останавливает работу бота.
 
         Args:
             timeout: Время ожидания завершения потока polling.
+            max_wait: Максимальное общее время ожидания завершения потока.
 
         Raises:
             PollingStopTimeoutError: Если поток polling не успел завершиться.
@@ -89,13 +90,39 @@ class BotLifecycleMixin:
 
         thread = self._polling_thread
         if thread and thread.is_alive():
-            thread.join(timeout=timeout)
+            wait_started = time.monotonic()
+            total_timeout = (
+                max_wait
+                if max_wait is not None
+                else max(timeout, 5.0) * 6
+            )
+            deadline = wait_started + total_timeout
+            interval = max(timeout, 0.1)
+            attempt = 0
+
+            while thread.is_alive():
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    break
+                attempt += 1
+                join_timeout = min(interval, remaining)
+                thread.join(timeout=join_timeout)
+                if thread.is_alive():
+                    self._get_logger().warning(
+                        "Поток polling %s всё ещё завершается (попытка %d)",
+                        thread.name,
+                        attempt,
+                    )
+
             if thread.is_alive():
+                elapsed = time.monotonic() - wait_started
                 error = PollingStopTimeoutError(
-                    f"Поток polling не завершился за {timeout:.1f} секунды"
+                    f"Поток polling не завершился за {elapsed:.1f} секунды"
                 )
                 self._get_logger().error(
-                    "Поток polling %s не завершился за %.1f секунды", thread.name, timeout
+                    "Поток polling %s не завершился за %.1f секунды",
+                    thread.name,
+                    elapsed,
                 )
                 self._notify_polling_error(error)
                 raise error
