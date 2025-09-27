@@ -63,8 +63,8 @@ class DialogManagementMixin:
 
         keyboard = types.InlineKeyboardMarkup(row_width=2)
         keyboard.add(
-            types.InlineKeyboardButton(text="Новый диалог", callback_data="dialog:new"),
-            types.InlineKeyboardButton(text="История диалогов", callback_data="dialog:history"),
+            types.InlineKeyboardButton(text="💬 Новый диалог", callback_data="dialog:new"),
+            types.InlineKeyboardButton(text="📜 История диалогов", callback_data="dialog:history"),
         )
         return keyboard
 

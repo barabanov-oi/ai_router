@@ -38,7 +38,7 @@ class DialogHistoryHandlersMixin:
                 )
             except Exception:  # pylint: disable=broad-except
                 self._get_logger().debug(
-                    "Не удалось удалить клавиатуру у сообщения %s",
+                    "🚫 Не удалось удалить клавиатуру у сообщения %s",
                     log_entry.assistant_message_id,
                     exc_info=True,
                 )
@@ -57,7 +57,7 @@ class DialogHistoryHandlersMixin:
             )
         except Exception:  # pylint: disable=broad-except
             self._get_logger().debug(
-                "Не удалось снять клавиатуру с сообщения %s",
+                "🚫 Не удалось снять клавиатуру с сообщения %s",
                 message.message_id,
                 exc_info=True,
             )
@@ -72,7 +72,7 @@ class DialogHistoryHandlersMixin:
             self._bot.delete_message(chat_id=message.chat.id, message_id=message.message_id)
         except Exception:  # pylint: disable=broad-except
             self._get_logger().debug(
-                "Не удалось удалить сообщение %s",
+                "🚫 Не удалось удалить сообщение %s",
                 message.message_id,
                 exc_info=True,
             )
@@ -116,13 +116,13 @@ class DialogHistoryHandlersMixin:
         self._remove_message_reply_markup(call.message)
         dialogs = self._get_recent_dialogs(user)
         if not dialogs:
-            self._bot.answer_callback_query(call.id, text="История пуста")
+            self._bot.answer_callback_query(call.id, text="📖 История пуста")
             return
         history_keyboard = self._build_history_keyboard(user)
         self._bot.answer_callback_query(call.id)
         self._send_message(
             chat_id=call.message.chat.id,
-            text="Выберите диалог из истории:",
+            text="🧾 Выберите диалог из истории:",
             parse_mode="HTML",
             reply_markup=history_keyboard,
         )
@@ -141,7 +141,7 @@ class DialogHistoryHandlersMixin:
         if dialog_id is None:
             self._send_message(
                 chat_id=call.message.chat.id,
-                text="Не удалось определить диалог",
+                text="🚫 Не удалось определить диалог",
                 parse_mode="HTML",
             )
             return
@@ -149,7 +149,7 @@ class DialogHistoryHandlersMixin:
         if not target_dialog:
             self._send_message(
                 chat_id=call.message.chat.id,
-                text="Диалог не найден",
+                text="🚫 Диалог не найден",
                 parse_mode="HTML",
             )
             return
