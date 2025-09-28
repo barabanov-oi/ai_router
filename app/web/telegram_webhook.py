@@ -14,7 +14,6 @@ telegram_webhook_bp = Blueprint("telegram_webhook", __name__)
 
 
 # NOTE[agent]: Обработчик входящих webhook-запросов от Telegram.
-@telegram_webhook_bp.route("/bot/webhook", methods=["POST"])
 def telegram_webhook() -> Response:
     """Принимает webhook и передаёт обновление менеджеру бота."""
 
@@ -26,4 +25,29 @@ def telegram_webhook() -> Response:
     return jsonify({"status": "received"})
 
 
-__all__ = ["telegram_webhook_bp"]
+_CURRENT_WEBHOOK_RULE: Optional[str] = None
+
+
+def configure_webhook_route(rule: str) -> None:
+    """Привязывает обработчик webhook к переданному пути."""
+
+    global _CURRENT_WEBHOOK_RULE  # pylint: disable=global-statement
+
+    requested_rule = (rule or "").strip()
+    normalized_rule = "/bot/webhook"
+    if requested_rule:
+        normalized_rule = requested_rule if requested_rule.startswith("/") else f"/{requested_rule}"
+    if _CURRENT_WEBHOOK_RULE == normalized_rule:
+        return
+
+    if _CURRENT_WEBHOOK_RULE is not None and telegram_webhook_bp.deferred_functions:
+        telegram_webhook_bp.deferred_functions.clear()
+    telegram_webhook_bp.add_url_rule(
+        normalized_rule,
+        view_func=telegram_webhook,
+        methods=["POST"],
+    )
+    _CURRENT_WEBHOOK_RULE = normalized_rule
+
+
+__all__ = ["telegram_webhook_bp", "configure_webhook_route", "telegram_webhook"]

@@ -20,6 +20,7 @@ def manage_settings() -> Union[Response, str]:
     keys = [
         "telegram_bot_token",
         "webhook_url",
+        "webhook_path",
         "webhook_secret",
         "default_mode",
         "dialog_token_limit",

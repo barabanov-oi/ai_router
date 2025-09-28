@@ -10,7 +10,6 @@ from ..models import AppSetting, db
 
 
 # NOTE[agent]: Класс инкапсулирует всю работу с таблицей настроек.
-# NOTE[agent]: Значение настройки webhook_url должно вести на публичный путь /bot/webhook.
 class SettingsService:
     """Сервисный класс для чтения и изменения настроек."""
 

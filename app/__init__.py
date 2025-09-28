@@ -11,6 +11,7 @@ from logging import Handler
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Any, Dict, List, Optional, TextIO
+from urllib.parse import urlparse
 
 from flask import Flask
 from flask_migrate import Migrate
@@ -159,6 +160,7 @@ def _ensure_default_settings() -> None:
         "default_mode": "default",
         "telegram_bot_token": "",
         "webhook_url": "",
+        "webhook_path": "",
         "webhook_secret": "",
         "active_model_id": "",
     }
@@ -228,11 +230,27 @@ def _ensure_default_model() -> None:
 def _register_blueprints(app: Flask) -> None:
     """Регистрирует веб-интерфейсы и API в приложении."""
 
+    from .services.settings_service import SettingsService
     from .web.admin import admin_bp  # Импорт внутри функции для корректного порядка загрузки
     from .web.telegram_webhook import (
+        configure_webhook_route,
         telegram_webhook_bp,
     )
 
+    webhook_rule = "/bot/webhook"
+    with app.app_context():
+        settings_service = SettingsService()
+        stored_path = (settings_service.get("webhook_path") or "").strip()
+        if stored_path:
+            webhook_rule = stored_path if stored_path.startswith("/") else f"/{stored_path}"
+        else:
+            webhook_url = (settings_service.get("webhook_url") or "").strip()
+            if webhook_url:
+                parsed = urlparse(webhook_url)
+                if parsed.path:
+                    webhook_rule = parsed.path
+
+    configure_webhook_route(webhook_rule)
     app.register_blueprint(telegram_webhook_bp)
     app.register_blueprint(admin_bp)
 
