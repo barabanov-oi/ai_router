@@ -5,10 +5,8 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Dict, Iterable, List, Optional, Tuple
 
-from html import escape as html_escape
-
 from telebot import types
-from sqlalchemy import func
+from sqlalchemy import and_, func, or_
 from sqlalchemy.exc import IntegrityError
 
 from ..models import Dialog, MessageLog, ModelConfig, User, db
@@ -130,10 +128,29 @@ class DialogManagementMixin:
 
     # NOTE[agent]: Возвращает последние диалоги пользователя.
     def _get_recent_dialogs(self, user: User, limit: int = 5) -> List[Dialog]:
-        """Отбирает последние диалоги пользователя по дате создания."""
+        """Отбирает последние непустые диалоги пользователя по дате создания."""
+
+        non_empty_message_exists = (
+            db.session.query(MessageLog.id)
+            .filter(MessageLog.dialog_id == Dialog.id)
+            .filter(
+                or_(
+                    and_(
+                        MessageLog.user_message.isnot(None),
+                        func.length(func.trim(MessageLog.user_message)) > 0,
+                    ),
+                    and_(
+                        MessageLog.llm_response.isnot(None),
+                        func.length(func.trim(MessageLog.llm_response)) > 0,
+                    ),
+                )
+            )
+            .exists()
+        )
 
         return (
             Dialog.query.filter_by(user_id=user.id)
+            .filter(non_empty_message_exists)
             .order_by(Dialog.started_at.desc())
             .limit(limit)
             .all()
@@ -216,31 +233,20 @@ class DialogManagementMixin:
             Положительный лимит токенов или None, если ограничение не задано.
         """
 
-        configured_limit: Optional[int] = None
         settings_service = getattr(self, "_settings", None)
-        if settings_service is not None and hasattr(settings_service, "get_int"):
-            configured_limit = settings_service.get_int("dialog_token_limit")
-        if configured_limit is not None and configured_limit <= 0:
-            configured_limit = None
-
-        source_entry = log_entry
-        if source_entry is None:
-            source_entry = (
-                MessageLog.query.filter_by(dialog_id=dialog.id)
-                .filter(MessageLog.model_id.isnot(None))
-                .order_by(MessageLog.message_index.desc())
-                .first()
-            )
-        model_limit: Optional[int] = None
-        if source_entry and source_entry.model:
-            raw_limit = int(source_entry.model.dialog_token_limit or 0)
-            if raw_limit > 0:
-                model_limit = raw_limit
-
-        limits = [value for value in (configured_limit, model_limit) if value and value > 0]
-        if not limits:
+        if settings_service is None or not hasattr(settings_service, "get_int"):
             return None
-        return min(limits)
+
+        configured_limit = settings_service.get_int("dialog_token_limit")
+        if configured_limit is None or configured_limit <= 0:
+            return None
+        return configured_limit
+
+    # NOTE[agent]: Форматирует целое число с разделением разрядов.
+    def _format_tokens_number(self, value: int) -> str:
+        """Возвращает строковое представление числа с разделителями тысяч."""
+
+        return f"{int(value):,}".replace(",", " ")
 
     # NOTE[agent]: Формирует строку с информацией об использовании токенов.
     def _format_usage_summary(
@@ -258,28 +264,27 @@ class DialogManagementMixin:
 
         prompt_total, completion_total, total_tokens = self._calculate_dialog_usage(dialog)
         total_limit = self._determine_effective_dialog_limit(dialog=dialog, log_entry=log_entry)
-        limit_display: int | str = total_limit if total_limit is not None else "∞"
-        def _italic(value: int | str) -> str:
-            """Возвращает значение, выделенное курсивом в HTML."""
 
-            return f"<i>{html_escape(str(value))}</i>"
+        total_display = self._format_tokens_number(total_tokens)
+        prompt_display = self._format_tokens_number(prompt_total)
+        completion_display = self._format_tokens_number(completion_total)
 
-        prefix = "📊 Использовано токенов:"
-        question_label = " (вопрос: "
-        answer_label = ", ответ: "
-        closing_bracket = ")"
-        total_text = _italic(f"{total_tokens} / {limit_display}")
-        prompt_text = _italic(prompt_total)
-        completion_text = _italic(completion_total)
-        summary_text = (
-            f"{html_escape(prefix)} "
-            f"{total_text}"
-            f"{html_escape(question_label)}"
-            f"{prompt_text}"
-            f"{html_escape(answer_label)}"
-            f"{completion_text}"
-            f"{html_escape(closing_bracket)}"
-        )
+        if total_limit is not None:
+            limit_display = self._format_tokens_number(total_limit)
+            remaining = max(total_limit - total_tokens, 0)
+            remaining_display = self._format_tokens_number(remaining)
+            summary_text = (
+                "📊 Токены: использовано "
+                f"{total_display} из {limit_display} "
+                f"(вопрос: {prompt_display}, ответ: {completion_display}). "
+                f"Осталось: {remaining_display}."
+            )
+        else:
+            summary_text = (
+                "📊 Токены: использовано "
+                f"{total_display} (вопрос: {prompt_display}, ответ: {completion_display})."
+            )
+
         return summary_text, total_tokens, total_limit
 
     # NOTE[agent]: Определяет, как сослаться на последнее сообщение диалога.
