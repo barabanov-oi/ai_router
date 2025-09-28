@@ -228,9 +228,10 @@ def _ensure_default_model() -> None:
 def _register_blueprints(app: Flask) -> None:
     """Регистрирует веб-интерфейсы и API в приложении."""
 
-    from .web.admin import admin_bp  # Импорт внутри функции для корректного порядка загрузки
+    from .web import admin_bp, telegram_webhook_bp  # Импорт внутри функции для корректного порядка загрузки
 
     app.register_blueprint(admin_bp)
+    app.register_blueprint(telegram_webhook_bp)
 
 
 def _get_preferred_log_encoding() -> str:

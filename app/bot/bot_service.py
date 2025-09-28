@@ -12,7 +12,7 @@ from flask import Flask, current_app
 from telebot import TeleBot, types
 
 from ..services.llm_service import LLMService
-from ..services.settings_service import SettingsService
+from ..services.settings_service import SettingsService, TELEGRAM_WEBHOOK_PATH
 from .dialog_management import DialogManagementMixin
 from .message_handlers import MessageHandlingMixin
 
@@ -142,6 +142,11 @@ class BotLifecycleMixin:
             )
             self._get_logger().error("%s Получено: %s", message, webhook_url)
             raise ValueError(message)
+        if TELEGRAM_WEBHOOK_PATH not in webhook_url:
+            self._get_logger().warning(
+                "Webhook URL не содержит стандартного пути %s. Убедитесь, что маршрут доступен.",
+                TELEGRAM_WEBHOOK_PATH,
+            )
         self.stop()
         self._bot = self._create_bot(token)
         self._bot.remove_webhook()

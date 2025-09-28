@@ -7,7 +7,7 @@ from typing import Union
 from flask import Response, redirect, render_template, request, url_for
 
 from ...models import ModelConfig
-from ...services.settings_service import SettingsService
+from ...services.settings_service import SettingsService, TELEGRAM_WEBHOOK_PATH
 from . import admin_bp
 
 
@@ -35,4 +35,9 @@ def manage_settings() -> Union[Response, str]:
         return redirect(url_for("admin.manage_settings"))
     settings = settings_service.all_settings()
     models = ModelConfig.query.order_by(ModelConfig.name.asc()).all()
-    return render_template("admin/settings.html", settings=settings, models=models)
+    return render_template(
+        "admin/settings.html",
+        settings=settings,
+        models=models,
+        telegram_webhook_path=TELEGRAM_WEBHOOK_PATH,
+    )

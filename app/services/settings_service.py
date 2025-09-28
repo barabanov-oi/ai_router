@@ -9,6 +9,10 @@ from flask import current_app
 from ..models import AppSetting, db
 
 
+# NOTE[agent]: Путь публичного webhook-эндпоинта Telegram.
+TELEGRAM_WEBHOOK_PATH = "/telegram/webhook"
+
+
 # NOTE[agent]: Класс инкапсулирует всю работу с таблицей настроек.
 class SettingsService:
     """Сервисный класс для чтения и изменения настроек."""
