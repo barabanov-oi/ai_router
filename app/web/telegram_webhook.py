@@ -14,7 +14,6 @@ telegram_webhook_bp = Blueprint("telegram_webhook", __name__)
 
 
 # NOTE[agent]: Обработчик входящих webhook-запросов от Telegram.
-@telegram_webhook_bp.route("/bot/webhook", methods=["POST"])
 def telegram_webhook() -> Response:
     """Принимает webhook и передаёт обновление менеджеру бота."""
 
@@ -26,4 +25,20 @@ def telegram_webhook() -> Response:
     return jsonify({"status": "received"})
 
 
-__all__ = ["telegram_webhook_bp"]
+def register_telegram_webhook_route(path: str) -> str:
+    """Привязывает обработчик webhook к переданному пути."""
+
+    normalized_path = "/" + path.lstrip("/") if path else "/bot/webhook"
+    # NOTE[agent]: Очищаем ранее записанные обработчики, чтобы обновить путь без дублирования правил.
+    telegram_webhook_bp.deferred_functions.clear()  # type: ignore[attr-defined]
+    telegram_webhook_bp.view_functions.pop("telegram_webhook", None)
+    telegram_webhook_bp.add_url_rule(
+        normalized_path,
+        endpoint="telegram_webhook",
+        view_func=telegram_webhook,
+        methods=["POST"],
+    )
+    return normalized_path
+
+
+__all__ = ["telegram_webhook_bp", "register_telegram_webhook_route", "telegram_webhook"]

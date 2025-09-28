@@ -9,7 +9,11 @@
   </label>
   <label>URL вебхука
     <input type="text" name="webhook_url" value="{{ settings.get('webhook_url', '') }}">
-    <small class="hint">Webhook требует HTTPS-адрес (например, https://example.com/bot/webhook).</small>
+    <small class="hint">Webhook требует полный HTTPS-адрес (например, https://example.com/telegram-hook).</small>
+  </label>
+  <label>Путь вебхука
+    <input type="text" name="webhook_path" value="{{ settings.get('webhook_path', '') }}" placeholder="/bot/webhook">
+    <small class="hint">Относительный путь, который будет привязан к Flask. Оставьте пустым, чтобы использовать путь из URL.</small>
   </label>
   <label>Секрет вебхука
     <input type="text" name="webhook_secret" value="{{ settings.get('webhook_secret', '') }}">

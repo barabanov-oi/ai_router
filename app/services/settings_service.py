@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import Any, Dict, Optional
+from urllib.parse import urlparse
 
 from flask import current_app
 
@@ -10,7 +11,6 @@ from ..models import AppSetting, db
 
 
 # NOTE[agent]: Класс инкапсулирует всю работу с таблицей настроек.
-# NOTE[agent]: Значение настройки webhook_url должно вести на публичный путь /bot/webhook.
 class SettingsService:
     """Сервисный класс для чтения и изменения настроек."""
 
@@ -73,6 +73,21 @@ class SettingsService:
                 setting.value,
             )
             return default
+
+    def get_webhook_path(self, *, fallback: str = "/bot/webhook") -> str:
+        """Возвращает относительный путь webhook с учётом настроек."""
+
+        raw_path = (self.get("webhook_path", "") or "").strip()
+        if raw_path:
+            return "/" + raw_path.lstrip("/")
+
+        webhook_url = (self.get("webhook_url", "") or "").strip()
+        if webhook_url:
+            parsed = urlparse(webhook_url)
+            if parsed.path:
+                return "/" + parsed.path.lstrip("/")
+
+        return fallback
 
     # NOTE[agent]: Метод возвращает множество всех настроек.
     def all_settings(self) -> Dict[str, str]:
