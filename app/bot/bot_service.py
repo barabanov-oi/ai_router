@@ -6,7 +6,7 @@ import threading
 import time
 from contextlib import contextmanager
 from logging import Logger
-from typing import Optional
+from typing import Dict, Optional
 from urllib.parse import urlparse
 
 from flask import Flask, current_app
@@ -254,5 +254,7 @@ class TelegramBotManager(BotLifecycleMixin, MessageHandlingMixin, DialogManageme
         self._polling_thread: Optional[threading.Thread] = None
         self._stop_event = threading.Event()
         self._app: Optional[Flask] = None
+        # NOTE[agent]: Регистрирует последние отправленные сообщения истории по чатам.
+        self._history_message_registry: Dict[int, types.Message] = {}
         if app is not None:
             self.init_app(app)

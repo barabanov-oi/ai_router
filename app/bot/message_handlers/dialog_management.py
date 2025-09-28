@@ -84,7 +84,6 @@ class DialogHistoryHandlersMixin:
         if self._respond_if_paused_callback(call):
             return
         user = self._get_or_create_user(call.from_user)
-        self._remove_message_reply_markup(call.message)
         current_dialog = self._get_active_dialog(user)
         if current_dialog:
             current_dialog.close()
@@ -113,19 +112,27 @@ class DialogHistoryHandlersMixin:
         user = self._get_or_create_user(call.from_user)
         if not self._bot:
             return
-        self._remove_message_reply_markup(call.message)
         dialogs = self._get_recent_dialogs(user)
         if not dialogs:
             self._bot.answer_callback_query(call.id, text="📖 История пуста")
             return
         history_keyboard = self._build_history_keyboard(user)
         self._bot.answer_callback_query(call.id)
-        self._send_message(
-            chat_id=call.message.chat.id,
+        chat_id = call.message.chat.id if call.message else call.from_user.id
+        registry = getattr(self, "_history_message_registry", {})
+        previous_history_message = registry.get(chat_id)
+        if previous_history_message:
+            self._delete_message_safely(previous_history_message)
+        sent_message = self._send_message(
+            chat_id=chat_id,
             text="🧾 Выберите диалог из истории:",
             parse_mode="HTML",
             reply_markup=history_keyboard,
         )
+        if sent_message is not None:
+            registry[chat_id] = sent_message
+        elif chat_id in registry:
+            registry.pop(chat_id, None)
 
     # NOTE[agent]: Обработчик переключения активного диалога.
     def _handle_switch_dialog(self, call: types.CallbackQuery) -> None:
@@ -167,7 +174,21 @@ class DialogHistoryHandlersMixin:
                 chat_id = None
         if chat_id is None:
             chat_id = call.from_user.id
+        registry_key = None
+        if history_message:
+            registry_key = history_message.chat.id
+        elif call.from_user:
+            registry_key = call.from_user.id
         self._delete_message_safely(history_message)
+        if registry_key is not None:
+            registry = getattr(self, "_history_message_registry", {})
+            cached_message = registry.get(registry_key)
+            if (
+                cached_message
+                and history_message
+                and cached_message.message_id == history_message.message_id
+            ):
+                registry.pop(registry_key, None)
         reply_message_id, last_text = self._get_last_message_reference(target_dialog)
         title = self._format_dialog_title(target_dialog)
         base_text = f"🔄 Переключаюсь на диалог <b>«{html_escape(title)}»</b>."
