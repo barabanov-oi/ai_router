@@ -13,6 +13,42 @@ from ...models import Dialog, MessageLog, db
 class DialogHistoryHandlersMixin:
     """Содержит обработчики истории и переключения диалогов."""
 
+    # NOTE[agent]: Хранение идентификаторов сообщений с историей по chat_id.
+    def _get_history_message_cache(self) -> dict[int, int]:
+        """Возвращает кеш идентификаторов сообщений истории диалогов."""
+
+        cache: Optional[dict[int, int]] = getattr(self, "_history_message_cache", None)
+        if cache is None:
+            cache = {}
+            setattr(self, "_history_message_cache", cache)
+        return cache
+
+    # NOTE[agent]: Запоминает последнее отправленное сообщение с историей.
+    def _remember_history_message(self, chat_id: int, message_id: int | None) -> None:
+        """Сохраняет идентификатор сообщения истории для указанного чата."""
+
+        if message_id is None:
+            return
+        cache = self._get_history_message_cache()
+        cache[chat_id] = message_id
+
+    # NOTE[agent]: Удаляет предыдущее сообщение истории и очищает запись в кеше.
+    def _forget_history_message(self, chat_id: int, *, delete: bool = True) -> None:
+        """Удаляет предыдущее сообщение с историей диалогов, если оно существует."""
+
+        cache = self._get_history_message_cache()
+        message_id = cache.pop(chat_id, None)
+        if not delete or message_id is None or not self._bot:
+            return
+        try:
+            self._bot.delete_message(chat_id=chat_id, message_id=message_id)
+        except Exception:  # pylint: disable=broad-except
+            self._get_logger().debug(
+                "🚫 Не удалось удалить предыдущее сообщение истории %s",
+                message_id,
+                exc_info=True,
+            )
+
     # NOTE[agent]: Удаление inline-клавиатуры у предыдущих ответов LLM.
     def _clear_previous_reply_markup(self, dialog: Dialog, chat_id: int) -> None:
         """Отключает клавиатуру у всех ранее отправленных ответов ассистента."""
@@ -120,12 +156,16 @@ class DialogHistoryHandlersMixin:
             return
         history_keyboard = self._build_history_keyboard(user)
         self._bot.answer_callback_query(call.id)
-        self._send_message(
-            chat_id=call.message.chat.id,
+        chat_id = call.message.chat.id if call.message else call.from_user.id
+        self._forget_history_message(chat_id)
+        sent_message = self._send_message(
+            chat_id=chat_id,
             text="🧾 Выберите диалог из истории:",
             parse_mode="HTML",
             reply_markup=history_keyboard,
         )
+        message_id = getattr(sent_message, "message_id", None)
+        self._remember_history_message(chat_id, message_id)
 
     # NOTE[agent]: Обработчик переключения активного диалога.
     def _handle_switch_dialog(self, call: types.CallbackQuery) -> None:
@@ -168,6 +208,8 @@ class DialogHistoryHandlersMixin:
         if chat_id is None:
             chat_id = call.from_user.id
         self._delete_message_safely(history_message)
+        if history_message:
+            self._forget_history_message(history_message.chat.id, delete=False)
         reply_message_id, last_text = self._get_last_message_reference(target_dialog)
         title = self._format_dialog_title(target_dialog)
         base_text = f"🔄 Переключаюсь на диалог <b>«{html_escape(title)}»</b>."
