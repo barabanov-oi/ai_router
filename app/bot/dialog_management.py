@@ -83,7 +83,7 @@ class DialogManagementMixin:
                 )
             )
         keyboard.add(
-            types.InlineKeyboardButton(text="Новый диалог", callback_data="dialog:new"),
+            types.InlineKeyboardButton(text="💬 Новый диалог", callback_data="dialog:new"),
         )
         return keyboard
 
@@ -266,23 +266,20 @@ class DialogManagementMixin:
         total_limit = self._determine_effective_dialog_limit(dialog=dialog, log_entry=log_entry)
 
         total_display = self._format_tokens_number(total_tokens)
-        prompt_display = self._format_tokens_number(prompt_total)
-        completion_display = self._format_tokens_number(completion_total)
 
         if total_limit is not None:
             limit_display = self._format_tokens_number(total_limit)
             remaining = max(total_limit - total_tokens, 0)
             remaining_display = self._format_tokens_number(remaining)
             summary_text = (
-                "📊 Токены: использовано "
-                f"{total_display} из {limit_display} "
-                f"(вопрос: {prompt_display}, ответ: {completion_display}). "
-                f"Осталось: {remaining_display}."
+                "📊 *Токены диалога:* _использовано "
+                f"{total_display} из {limit_display}_"
+                f"*Осталось*: _{remaining_display}_."
             )
         else:
             summary_text = (
-                "📊 Токены: использовано "
-                f"{total_display} (вопрос: {prompt_display}, ответ: {completion_display})."
+                "📊 *Токены диалога:* _использовано "
+                f"{total_display}_."
             )
 
         return summary_text, total_tokens, total_limit
