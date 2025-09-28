@@ -66,6 +66,8 @@ class DialogHistoryHandlersMixin:
 
         if not self._bot or not message:
             return
+        if self._is_llm_response_message(message):
+            return
         try:
             self._bot.edit_message_reply_markup(
                 chat_id=message.chat.id,
@@ -78,6 +80,22 @@ class DialogHistoryHandlersMixin:
                 message.message_id,
                 exc_info=True,
             )
+
+    # NOTE[agent]: Проверяет, принадлежит ли сообщение ответу LLM.
+    def _is_llm_response_message(self, message: Optional[types.Message]) -> bool:
+        """Возвращает True, если сообщение сохранено как ответ ассистента."""
+
+        if not message or message.message_id is None:
+            return False
+        chat = getattr(message, "chat", None)
+        query = MessageLog.query.filter(
+            MessageLog.assistant_message_id == message.message_id,
+        )
+        if chat is not None:
+            query = query.join(Dialog).filter(
+                Dialog.telegram_chat_id == str(chat.id)
+            )
+        return query.first() is not None
 
     # NOTE[agent]: Безопасно удаляет сообщение с клавиатурой истории.
     def _delete_message_safely(self, message: Optional[types.Message]) -> None:
