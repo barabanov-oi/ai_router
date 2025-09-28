@@ -133,9 +133,15 @@ class BotLifecycleMixin:
         """Настраивает webhook и возвращает URL для проверки."""
 
         token = self._settings.get("telegram_bot_token")
-        webhook_url = self._settings.get("webhook_url")
+        webhook_url = (self._settings.get("webhook_url") or "").strip()
         if not token or not webhook_url:
             raise RuntimeError("Webhook url или token не настроены")
+        if not webhook_url.startswith("https://"):
+            message = (
+                "Webhook URL должен начинаться с https://. Укажите HTTPS-адрес сервера."
+            )
+            self._get_logger().error("%s Получено: %s", message, webhook_url)
+            raise ValueError(message)
         self.stop()
         self._bot = self._create_bot(token)
         self._bot.remove_webhook()

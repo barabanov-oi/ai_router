@@ -9,6 +9,7 @@
   </label>
   <label>URL вебхука
     <input type="text" name="webhook_url" value="{{ settings.get('webhook_url', '') }}">
+    <small class="hint">Webhook требует HTTPS-адрес (например, https://example.com/webhook).</small>
   </label>
   <label>Секрет вебхука
     <input type="text" name="webhook_secret" value="{{ settings.get('webhook_secret', '') }}">
