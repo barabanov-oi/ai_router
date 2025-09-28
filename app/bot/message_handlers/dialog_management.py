@@ -37,8 +37,13 @@ class DialogHistoryHandlersMixin:
         """Удаляет предыдущее сообщение с историей диалогов, если оно существует."""
 
         cache = self._get_history_message_cache()
-        message_id = cache.pop(chat_id, None)
-        if not delete or message_id is None or not self._bot:
+        message_id = cache.get(chat_id)
+        if message_id is None:
+            return
+        if not delete:
+            cache.pop(chat_id, None)
+            return
+        if not self._bot:
             return
         try:
             self._bot.delete_message(chat_id=chat_id, message_id=message_id)
@@ -48,6 +53,8 @@ class DialogHistoryHandlersMixin:
                 message_id,
                 exc_info=True,
             )
+            return
+        cache.pop(chat_id, None)
 
     # NOTE[agent]: Удаление inline-клавиатуры у предыдущих ответов LLM.
     def _clear_previous_reply_markup(self, dialog: Dialog, chat_id: int) -> None:
