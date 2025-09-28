@@ -11,6 +11,10 @@
     <input type="text" name="webhook_url" value="{{ settings.get('webhook_url', '') }}">
     <small class="hint">Webhook требует HTTPS-адрес (например, https://example.com/webhook).</small>
   </label>
+  <label>Относительный путь вебхука
+    <input type="text" name="webhook_path" value="{{ settings.get('webhook_path', '') }}" placeholder="/bot/webhook">
+    <small class="hint">Используется при регистрации маршрута во Flask (например, /bot/webhook).</small>
+  </label>
   <label>Секрет вебхука
     <input type="text" name="webhook_secret" value="{{ settings.get('webhook_secret', '') }}">
   </label>

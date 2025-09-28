@@ -160,6 +160,7 @@ def _ensure_default_settings() -> None:
         "telegram_bot_token": "",
         "webhook_url": "",
         "webhook_secret": "",
+        "webhook_path": "",
         "active_model_id": "",
     }
 
@@ -228,8 +229,19 @@ def _ensure_default_model() -> None:
 def _register_blueprints(app: Flask) -> None:
     """Регистрирует веб-интерфейсы и API в приложении."""
 
-    from .web.admin import admin_bp  # Импорт внутри функции для корректного порядка загрузки
+    from .services.settings_service import SettingsService
+    from .web import (
+        admin_bp,
+        register_telegram_webhook_route,
+        telegram_webhook_bp,
+    )  # Импорт внутри функции для корректного порядка загрузки
 
+    with app.app_context():
+        settings_service = SettingsService()
+        webhook_path = settings_service.get_webhook_path()
+
+    register_telegram_webhook_route(webhook_path)
+    app.register_blueprint(telegram_webhook_bp)
     app.register_blueprint(admin_bp)
 
 

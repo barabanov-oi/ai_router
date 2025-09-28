@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import Any, Dict, Optional
+from urllib.parse import urlparse
 
 from flask import current_app
 
@@ -79,3 +80,30 @@ class SettingsService:
 
         items = AppSetting.query.all()
         return {item.key: item.value or "" for item in items}
+
+    # NOTE[agent]: Метод возвращает относительный путь webhook с учётом настроек.
+    def get_webhook_path(self) -> str:
+        """Возвращает относительный путь webhook, определённый в настройках."""
+
+        raw_path = (self.get("webhook_path", "") or "").strip()
+        if raw_path:
+            return self._normalize_webhook_path(raw_path)
+
+        webhook_url = (self.get("webhook_url", "") or "").strip()
+        if webhook_url:
+            parsed_url = urlparse(webhook_url)
+            if parsed_url.path:
+                return self._normalize_webhook_path(parsed_url.path)
+        return "/"
+
+    # NOTE[agent]: Метод приводит путь webhook к ожидаемому формату.
+    @staticmethod
+    def _normalize_webhook_path(path: str) -> str:
+        """Добавляет ведущий слэш и убирает лишние пробелы."""
+
+        normalized = path.strip()
+        if not normalized:
+            return "/"
+        if not normalized.startswith("/"):
+            normalized = f"/{normalized}"
+        return normalized

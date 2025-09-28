@@ -7,6 +7,7 @@ import time
 from contextlib import contextmanager
 from logging import Logger
 from typing import Optional
+from urllib.parse import urlparse
 
 from flask import Flask, current_app
 from telebot import TeleBot, types
@@ -136,9 +137,10 @@ class BotLifecycleMixin:
         webhook_url = (self._settings.get("webhook_url") or "").strip()
         if not token or not webhook_url:
             raise RuntimeError("Webhook url или token не настроены")
-        if not webhook_url.startswith("https://"):
+        parsed_url = urlparse(webhook_url)
+        if parsed_url.scheme != "https" or not parsed_url.netloc:
             message = (
-                "Webhook URL должен начинаться с https://. Укажите HTTPS-адрес сервера."
+                "Webhook URL должен быть полным HTTPS-адресом с доменным именем."
             )
             self._get_logger().error("%s Получено: %s", message, webhook_url)
             raise ValueError(message)
