@@ -5,7 +5,6 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Dict, Iterable, List, Optional, Tuple
 
-from html import escape as html_escape
 
 from telebot import types
 from sqlalchemy import func
@@ -134,6 +133,7 @@ class DialogManagementMixin:
 
         return (
             Dialog.query.filter_by(user_id=user.id)
+            .filter(Dialog.messages.any())
             .order_by(Dialog.started_at.desc())
             .limit(limit)
             .all()
@@ -258,27 +258,20 @@ class DialogManagementMixin:
 
         prompt_total, completion_total, total_tokens = self._calculate_dialog_usage(dialog)
         total_limit = self._determine_effective_dialog_limit(dialog=dialog, log_entry=log_entry)
-        limit_display: int | str = total_limit if total_limit is not None else "∞"
-        def _italic(value: int | str) -> str:
-            """Возвращает значение, выделенное курсивом в HTML."""
 
-            return f"<i>{html_escape(str(value))}</i>"
+        def _format_number(value: int) -> str:
+            """Возвращает число с разделением классов тысяч пробелами."""
 
-        prefix = "📊 Использовано токенов:"
-        question_label = " (вопрос: "
-        answer_label = ", ответ: "
-        closing_bracket = ")"
-        total_text = _italic(f"{total_tokens} / {limit_display}")
-        prompt_text = _italic(prompt_total)
-        completion_text = _italic(completion_total)
+            return f"{value:,}".replace(",", " ")
+
+        total_part = _format_number(total_tokens)
+        limit_part = _format_number(total_limit) if total_limit is not None else "∞"
+
         summary_text = (
-            f"{html_escape(prefix)} "
-            f"{total_text}"
-            f"{html_escape(question_label)}"
-            f"{prompt_text}"
-            f"{html_escape(answer_label)}"
-            f"{completion_text}"
-            f"{html_escape(closing_bracket)}"
+            "📊 Использовано токенов: "
+            f"{total_part} / {limit_part}"
+            f" (вопрос: {_format_number(prompt_total)},"
+            f" ответ: {_format_number(completion_total)})"
         )
         return summary_text, total_tokens, total_limit
 
@@ -339,7 +332,27 @@ class DialogManagementMixin:
         customized = base_config.copy()
         if "temperature" in mode_definition:
             customized["temperature"] = mode_definition["temperature"]
+        final_limit: Optional[int] = None
         if "max_tokens" in mode_definition:
-            customized["max_tokens"] = mode_definition["max_tokens"]
+            try:
+                mode_limit = int(mode_definition["max_tokens"])
+            except (TypeError, ValueError):
+                mode_limit = 0
+            model_limit = int(model.max_tokens or 0)
+            if model_limit > 0 and mode_limit > 0:
+                final_limit = min(model_limit, mode_limit)
+            elif model_limit > 0:
+                final_limit = model_limit
+            elif mode_limit > 0:
+                final_limit = mode_limit
+        else:
+            model_limit = int(model.max_tokens or 0)
+            if model_limit > 0:
+                final_limit = model_limit
+
+        if final_limit and final_limit > 0:
+            customized["max_tokens"] = final_limit
+        else:
+            customized.pop("max_tokens", None)
         instruction = model.system_instruction if model.system_instruction else None
         return model, customized, instruction

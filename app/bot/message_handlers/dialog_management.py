@@ -84,7 +84,6 @@ class DialogHistoryHandlersMixin:
         if self._respond_if_paused_callback(call):
             return
         user = self._get_or_create_user(call.from_user)
-        self._remove_message_reply_markup(call.message)
         current_dialog = self._get_active_dialog(user)
         if current_dialog:
             current_dialog.close()
@@ -113,7 +112,6 @@ class DialogHistoryHandlersMixin:
         user = self._get_or_create_user(call.from_user)
         if not self._bot:
             return
-        self._remove_message_reply_markup(call.message)
         dialogs = self._get_recent_dialogs(user)
         if not dialogs:
             self._bot.answer_callback_query(call.id, text="📖 История пуста")
