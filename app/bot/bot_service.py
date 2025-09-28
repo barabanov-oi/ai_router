@@ -129,6 +129,7 @@ class BotLifecycleMixin:
         self._cleanup_completed_polling_thread()
 
     # NOTE[agent]: Настройка webhook: установка URL и создание экземпляра бота.
+    # NOTE[agent]: URL должен вести на публичный маршрут /bot/webhook.
     def start_webhook(self) -> str:
         """Настраивает webhook и возвращает URL для проверки."""
 

@@ -229,7 +229,11 @@ def _register_blueprints(app: Flask) -> None:
     """Регистрирует веб-интерфейсы и API в приложении."""
 
     from .web.admin import admin_bp  # Импорт внутри функции для корректного порядка загрузки
+    from .web.telegram_webhook import (
+        telegram_webhook_bp,
+    )
 
+    app.register_blueprint(telegram_webhook_bp)
     app.register_blueprint(admin_bp)
 
 
