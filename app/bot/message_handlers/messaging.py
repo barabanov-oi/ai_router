@@ -117,7 +117,6 @@ class MessagingMixin:
             if limit_exceeded and limit_value is not None:
                 warning_text = self._build_dialog_limit_message(limit_value, total_tokens)
             if self._bot:
-                self._clear_previous_reply_markup(dialog, message.chat.id)
                 combined_text = response_text or ""
                 if usage_summary:
                     combined_text = (
@@ -137,7 +136,7 @@ class MessagingMixin:
                         reply_markup=markup,
                         escape=False,
                     )
-                    if markup is not None:
+                    if sent is not None:
                         last_message_id = getattr(sent, "message_id", None)
                 if limit_exceeded and warning_text:
                     self._send_message(
@@ -150,6 +149,11 @@ class MessagingMixin:
                 if last_message_id is not None:
                     log_entry.assistant_message_id = last_message_id
                     db.session.commit()
+                    self._clear_previous_reply_markup(
+                        dialog,
+                        message.chat.id,
+                        exclude_message_id=last_message_id,
+                    )
         except Exception as exc:  # pylint: disable=broad-except
             self._get_logger().exception("Ошибка при обращении к LLM")
             if self._bot:

@@ -254,5 +254,6 @@ class TelegramBotManager(BotLifecycleMixin, MessageHandlingMixin, DialogManageme
         self._polling_thread: Optional[threading.Thread] = None
         self._stop_event = threading.Event()
         self._app: Optional[Flask] = None
+        self._history_messages: dict[int, types.Message] = {}
         if app is not None:
             self.init_app(app)
