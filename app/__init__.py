@@ -21,11 +21,10 @@ from .bot.bot_service import TelegramBotManager
 from dotenv import load_dotenv
 
 
-# NOTE[agent]: Экземпляр мигратора (Alembic через Flask-Migrate).
+# Экземпляр мигратора (Alembic через Flask-Migrate).
 migrate = Migrate(compare_type=True)
 
 
-# NOTE[agent]: Функция создаёт и настраивает экземпляр приложения Flask.
 def create_app(config: Optional[Dict[str, Any]] = None) -> Flask:
     """Создаёт экземпляр Flask и регистрирует все компоненты.
 
@@ -35,10 +34,14 @@ def create_app(config: Optional[Dict[str, Any]] = None) -> Flask:
     Returns:
         Настроенный экземпляр Flask-приложения.
     """
-
     app = Flask(__name__, instance_relative_config=True)
 
-    # NOTE[agent]: Конфигурация по умолчанию; может быть переопределена через env и аргумент `config`.
+    # РЕЖИМ ЗАПУСКА: normal | migrate
+    # В режиме "migrate" мы не регистрируем blueprint'ы и не инициализируем бота,
+    # чтобы можно было безопасно выполнить flask db upgrade при первом старте.
+    BOOT_MODE = os.getenv("APP_BOOTSTRAP_MODE", "normal").lower()
+
+    # Конфигурация по умолчанию; может быть переопределена через env и аргумент `config`.
     default_db_path = os.environ.get(
         "AI_ROUTER_DB",
         "sqlite:///" + str(Path(app.instance_path) / "ai_router.sqlite"),
@@ -50,7 +53,7 @@ def create_app(config: Optional[Dict[str, Any]] = None) -> Flask:
         TELEGRAM_WEBHOOK_HOST=os.environ.get("AI_ROUTER_WEBHOOK_HOST", ""),
     )
 
-    # NOTE[agent]: Загружаем учётные данные админа из окружения или .env.
+    # Загружаем учётные данные админа из окружения или .env.
     admin_login, admin_password = _load_admin_credentials()
     app.config["ADMIN_LOGIN"] = admin_login
     app.config["ADMIN_PASSWORD"] = admin_password
@@ -63,44 +66,42 @@ def create_app(config: Optional[Dict[str, Any]] = None) -> Flask:
     _configure_logging(app)
     _ensure_instance_folder(app)
 
-    # NOTE[agent]: Инициализация БД и миграций.
+    # Инициализация БД и миграций.
     db.init_app(app)
     migrate.init_app(app, db)
 
-    # NOTE[agent]: Не вызываем db.create_all(); схему меняем через миграции.
+    # Не вызываем db.create_all(); схему меняем через миграции.
     # Инициализацию дефолтных записей выполняем только если таблицы доступны.
     # with app.app_context():
     #     _try_seed_defaults(app)
 
-    _register_blueprints(app)
+    # ⚠️ Критично: не трогаем БД на этапе миграций (первый старт).
+    if BOOT_MODE != "migrate":
+        _register_blueprints(app)
 
-    # NOTE[agent]: Менеджер бота (хранится в app.extensions).
-    bot_manager = TelegramBotManager(app)
-    app.extensions["bot_manager"] = bot_manager
+        # Менеджер бота (может обращаться к настройкам) — только вне режима миграций.
+        bot_manager = TelegramBotManager(app)
+        app.extensions["bot_manager"] = bot_manager
 
     return app
 
 
-# NOTE[agent]: Функция подготавливает логин и пароль администратора.
 def _load_admin_credentials() -> tuple[Optional[str], Optional[str]]:
     """Возвращает логин и пароль администратора из окружения или .env."""
-
     admin_login = os.environ.get("ADMLOGIN")
     admin_password = os.environ.get("ADMPWD")
     if admin_login and admin_password:
         return admin_login, admin_password
 
-    # NOTE[agent]: Если переменных нет — пытаемся загрузить их из файла .env.
+    # Если переменных нет — пытаемся загрузить их из файла .env.
     load_dotenv()
     admin_login = admin_login or os.environ.get("ADMLOGIN")
     admin_password = admin_password or os.environ.get("ADMPWD")
     return admin_login, admin_password
 
 
-# NOTE[agent]: Вспомогательная функция настраивает логирование приложения.
 def _configure_logging(app: Flask) -> None:
     """Настраивает файловый и консольный логгеры."""
-
     log_level = os.environ.get("AI_ROUTER_LOG_LEVEL", "INFO").upper()
     app.logger.setLevel(getattr(logging, log_level, logging.INFO))
 
@@ -129,17 +130,14 @@ def _configure_logging(app: Flask) -> None:
     app.logger.addHandler(file_handler)
 
 
-# NOTE[agent]: Функция гарантирует наличие папки instance для базы данных.
 def _ensure_instance_folder(app: Flask) -> None:
     """Создаёт директорию instance, если она отсутствует."""
-
     try:
         Path(app.instance_path).mkdir(parents=True, exist_ok=True)
     except OSError:
         app.logger.exception("Не удалось создать директорию instance")
 
 
-# NOTE[agent]: Безопасная инициализация дефолтных записей — только если таблицы существуют.
 def _try_seed_defaults(app: Flask) -> None:
     """Пытается создать базовые настройки и дефолтную модель, если таблицы уже существуют."""
     try:
@@ -151,10 +149,8 @@ def _try_seed_defaults(app: Flask) -> None:
         app.logger.warning("Пропущена инициализация дефолтных данных: %s", exc)
 
 
-# NOTE[agent]: Настройки по умолчанию создаются при первом запуске.
 def _ensure_default_settings() -> None:
     """Создаёт базовые настройки, если они отсутствуют в базе."""
-
     defaults = {
         "default_mode": "default",
         "telegram_bot_token": "",
@@ -174,10 +170,8 @@ def _ensure_default_settings() -> None:
         db.session.commit()
 
 
-# NOTE[agent]: Создаём запись поставщика OpenAI по умолчанию.
 def _ensure_default_provider() -> LLMProvider:
     """Гарантирует наличие базового поставщика OpenAI."""
-
     provider = LLMProvider.query.filter_by(vendor=LLMProvider.VENDOR_OPENAI).first()
     if provider:
         return provider
@@ -192,14 +186,11 @@ def _ensure_default_provider() -> LLMProvider:
     return provider
 
 
-# NOTE[agent]: Создаём типовую конфигурацию модели, чтобы система работала "из коробки".
 def _ensure_default_model() -> None:
     """Гарантирует наличие хотя бы одной конфигурации модели в базе."""
-
     if ModelConfig.query.count() == 0:
         provider = _ensure_default_provider()
-        # NOTE[agent]: Поля подстраиваются под текущую схему ModelConfig.
-        # Если у модели используется provider_id/instruction — адаптируй ниже.
+        # Поля подстраиваются под текущую схему ModelConfig.
         model = ModelConfig(
             name="gpt-3.5-turbo",
             model="gpt-3.5-turbo",
@@ -217,18 +208,15 @@ def _ensure_default_model() -> None:
 
         default_setting = AppSetting.query.filter_by(key="active_model_id").first()
         if default_setting:
-            # Предпочтительно использовать метод-мутатор, если есть; иначе простое присваивание и commit.
             try:
-                default_setting.update_value(str(model.id))  # кастомный метод, если реализован
+                default_setting.update_value(str(model.id))  # если у модели есть мутатор
             except AttributeError:
                 default_setting.value = str(model.id)
             db.session.commit()
 
 
-# NOTE[agent]: Регистрация blueprint'ов расширяет функциональность приложения.
 def _register_blueprints(app: Flask) -> None:
     """Регистрирует веб-интерфейсы и API в приложении."""
-
     from .services.settings_service import SettingsService
     from .web.admin import admin_bp  # Импорт внутри функции для корректного порядка загрузки
     from .web.telegram_webhook import (
@@ -246,12 +234,7 @@ def _register_blueprints(app: Flask) -> None:
 
 
 def _get_preferred_log_encoding() -> str:
-    """Определяет кодировку логов с учётом платформы и окружения.
-
-    Returns:
-        str: Имя кодировки, которая подходит для текущего терминала.
-    """
-
+    """Определяет кодировку логов с учётом платформы и окружения."""
     override_encoding = os.environ.get("AI_ROUTER_LOG_ENCODING")
     if override_encoding:
         return override_encoding
@@ -274,7 +257,6 @@ def _get_preferred_log_encoding() -> str:
 
 def _configure_existing_handlers(handlers: List[Handler], encoding: str, level: int) -> None:
     """Обновляет кодировку потоковых обработчиков, созданных Flask ранее."""
-
     for handler in list(handlers):
         handler.setLevel(level)
         if isinstance(handler, logging.StreamHandler):
@@ -285,7 +267,6 @@ def _configure_existing_handlers(handlers: List[Handler], encoding: str, level: 
 
 def _ensure_stream_encoding(stream: TextIO, encoding: str) -> TextIO:
     """Гарантирует, что переданный поток поддерживает нужную кодировку."""
-
     current_encoding = getattr(stream, "encoding", None)
     if current_encoding and current_encoding.lower() == encoding.lower():
         return stream
